@@ -1,43 +1,11 @@
 #!/usr/bin/env python3
 
-#from funcs import parameters
-#from funcs import toolbox_parser
 import os
 import sys
 import hashlib
 import subprocess
 import platform
 import json
-from datetime import datetime
-import glob
-import shutil
-import posixpath
-
-def construct_output(command_identifier):
-    #allow output path to be left unassigned, in which case it defaults to input path
-    #specified output should also override toolbox: include "or (args.output_path and args.toolbox_profile)"
-    if args.output_path:
-        outdir = args.output_path
-        if outdir.startswith( '{' ):
-            json_acceptable_string = outdir.replace("'", "\"")
-            outdir = json.loads(json_acceptable_string)
-            #output base folder can use keywords like =input
-            parse_output_construction(outdir, command_identifier)
-
-    elif args.toolbox_profile:
-        print("using toolbox profile")
-        opened_toolbox = toolbox_parser.load_toolbox_profile()
-        outdir = toolbox_parser.return_value(opened_toolbox, 'io manager', 'output')
-        parse_output_construction(outdir, command_identifier)
-        #print(outdir)
-        #make the output parsing for the normal output flag a function and just have this reference the same function
-        #may actually be able to combine this with the above, although transcoding multiple derivatives in one command will be difficult
-        #one solution might be to have another key containing a list of sub-keys
-    elif args.input_path and not args.output_path:
-        #TO DO should probably develop this a little further to match the input folder for each item
-        #this could probably be done using a keyword to have it match the final input folder when assigning
-        outdir = args.input_path
-    return outdir
 
 def define_inputfolder(indir, fname):
     inputfolder = None
@@ -49,25 +17,26 @@ def define_inputfolder(indir, fname):
         inputfolder = os.path.join(indir, fname)
     return inputfolder
 
-def create_transcode_output_folders(baseOutput, outputFolder):
+def create_transcode_output_folders(baseOutput, outputFolderList):
     if not os.path.isdir(baseOutput):
         try:
             os.mkdir(baseOutput)
         except:
             print ("unable to create output folder:", baseOutput)
-            quit
+            quit()
     else:
         print (baseOutput, "already exists")
         print ('Proceeding')
         
-    if not os.path.isdir(outputFolder):
-        try:
-            os.mkdir(outputFolder)
-        except:
-            print ("unable to create output folder:", outputFolder)
-            quit
-    else:
-        print ("using existing folder", outputFolder, "as output")
+    for folder in outputFolderList:
+        if not os.path.isdir(folder):
+            try:
+                os.mkdir(folder)
+            except:
+                print ("unable to create output folder:", folder)
+                quit()
+        else:
+            print ("using existing folder", folder, "as output")
 
 def get_ffmpeg_version(ffmpegPath):
     '''
@@ -109,53 +78,12 @@ def hashlib_md5(filename):
 #this function is from the IFI's scripts with a minor change
 #open(str(filename)), 'rb') as f has been changed to open(filename, 'rb') as f
 
-#get immediate subdirectories of input
-#used to create equivalent directory structure in output
-def get_immediate_subdirectories(folder):
-        return [name for name in os.listdir(folder)
-            if os.path.isdir(os.path.join(folder, name))]
-
-def get_folder_size(folder):
-    '''
-    Calculate the folder size
-    '''
-    total_size = 0
-    d = os.scandir(folder)
-    for entry in d:
-        try:
-            if entry.is_dir():
-                total_size += get_folder_size(entry.path)
-            else:
-                total_size += entry.stat().st_size
-        except FileNotFoundError:
-            #file was deleted during scandir
-            pass
-        except PermissionError:
-            return 0
-    return total_size
-
-def get_size_format(b, factor=1024, suffix="B"):
-    '''
-    Scale bytes to its proper byte format
-    e.g:
-        1253656 => '1.20MB'
-        1253656678 => '1.17GB'
-    '''
-    for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
-        if b < factor:
-            return f"{b:.2f}{unit}{suffix}"
-        b /= factor
-    return f"{b:.2f}Y{suffix}"
-#credit: How to Get the Size of Directories in Python, Abdou Rockikz
-#this is currently not being used
-#may use this for a later part of the script to total file sizes -- sum sizes in bytes from json files, then run that through this
-
 def ffprobe_report(ffprobePath, input_file_abspath):
     '''
     returns dictionaries with ffprobe metadata
     '''
     video_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=codec_name,avg_frame_rate,codec_time_base,width,height,pix_fmt,sample_aspect_ratio,display_aspect_ratio,color_range,color_space,color_transfer,color_primaries,chroma_location,field_order,codec_tag_string', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
-    audio_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_long_name,bits_per_sample,sample_rate', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
+    audio_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_long_name,bits_per_sample,sample_rate,channels', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     format_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-show_entries', 'format=duration,size,nb_streams', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     data_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'd', '-show_entries', 'stream=codec_tag_string', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     attachment_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 't', '-show_entries', 'stream_tags=filename', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
@@ -190,6 +118,7 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     color_primaries = [stream.get('color_primaries') for stream in (video_output['streams'])][0]
     audio_bitrate = [stream.get('bits_per_sample') for stream in (audio_output['streams'])]
     audio_sample_rate = [stream.get('sample_rate') for stream in (audio_output['streams'])]
+    audio_channels = [stream.get('channels') for stream in (audio_output['streams'])]
     audio_stream_count = len(audio_codec_name_list)
     
     file_metadata = {
@@ -218,153 +147,11 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     techMetaA = {
     'audio stream count' : audio_stream_count,
     'audio bitrate' : audio_bitrate,
-    'audio sample rate' : audio_sample_rate
+    'audio sample rate' : audio_sample_rate,
+    'channels' : audio_channels
     }
     
     return file_metadata, techMetaV, techMetaA
-
-def list_mkv_attachments(input_file_abspath):
-    #could also identify with -select streams m:filename
-    t_probe_out = json.loads(subprocess.check_output([args.ffprobe_path, '-v', 'error', '-select_streams', 't', '-show_entries', 'stream_tags=filename', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
-    tags = [streams.get('tags') for streams in (t_probe_out['streams'])]
-    attachment_list = []
-    for i in tags:
-        filename = [i.get('filename')]
-        attachment_list.extend(filename)
-    return attachment_list
-
-def dpx_md5_compare(dpxfolder):
-    '''
-    Returns two sets
-    One from the original DPX sequence's md5 checksum
-    The other from the calculated checksums of the decoded DPX sequence
-    '''
-    md5list = []
-    orig_md5list = {}
-    for i in os.listdir(dpxfolder):
-        abspath = os.path.join(dpxfolder, i)
-        if i.endswith(".md5"):
-            orig_md5list = set(map(str.strip, open(abspath)))
-        elif i.endswith(".xml"):
-            pass
-        else:
-            y = hashlib_md5(abspath)
-            filehash = y + ' *' + i
-            md5list.append(filehash)
-    compareset = set(md5list)
-    return compareset, orig_md5list
-
-def grab_actime(folder):
-    '''
-    Look for an ac folder containing an mp4 file
-    If found, return the runtime
-    '''
-    acfolder = os.path.join(folder, 'ac')
-    if os.path.isdir(acfolder):
-        mp4file = glob.glob1(acfolder, "*.mp4")
-        mp4counter = len(mp4file)
-        if mp4counter == 1:
-            for i in mp4file:
-                file = os.path.join(acfolder, i)
-                actime = subprocess.check_output([args.ffprobe_path, '-v', 'error', file, '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1']).decode("ascii").rstrip()
-                #this returns the total runtime in seconds
-        elif mp4counter < 1:
-            actime = "no mp4 files found in " + acfolder
-        elif mp4counter > 1:
-            actime = "more than 1 mp4 file found"
-    else:
-        actime = "no ac folder found"
-    return actime
-    #when comparing runtimes, you could check if this value is a float, which would allow you to know if there was an error here
-
-def grab_pmtime(folder):
-    '''
-    Look for a pm folder containing an mkv file
-    If found, return the runtime
-    '''
-    pmfolder = os.path.join(folder, 'pm')
-    if os.path.isdir(pmfolder):
-        pmfile = glob.glob1(pmfolder, "*.mkv")
-        mkvcounter = len(pmfile)
-        if mkvcounter == 1:
-            for i in pmfile:
-                file = os.path.join(pmfolder, i)
-                pmtime = subprocess.check_output([args.ffprobe_path, '-v', 'error', file, '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1']).decode("ascii").rstrip()
-                #this returns the total runtime in seconds
-        elif mkvcounter < 1:
-            pmtime = "no mkv files found in " + pmfolder
-        elif mkvcounter > 1:
-            pmtime = "more than 1 mkv file found"
-    else:
-        pmtime = "no pm folder found"
-    return pmtime
-
-def verification_check(folder):
-    '''
-    Parse the verification_log.txt file
-    Print whether any issues were encountered
-    '''
-    verifile = os.path.join(folder, 'pm', "verification_log.txt")
-    if not os.path.isfile(verifile):
-        print('No verification_log.txt file found in', folder)
-    else:
-        with open(verifile) as f:
-            data = f.read().split('\n')
-            if 'Entries in original checksum not found in calculated checksum:' in data:
-                checksums1 = data[data.index('Entries in original checksum not found in calculated checksum:') +1]
-            if 'Entries in calculated checksum not found in original checksum:' in data:
-                checksums2 = data[data.index('Entries in calculated checksum not found in original checksum:') +1]
-            print(data[0])
-            if not 'None' in checksums1:
-                print('\t'"Entries found in the original checksum not found in calculated checksum", '\n''\t'"  See verification log for details")
-            if not 'None' in checksums2:
-                print('\t'"Entries found in the calculated checksum not found in original checksum", '\n''\t'"  See verification log for details")
-            if 'Access Copy Runtime:' in data:
-                try:
-                    ac_runtime = float(data[data.index('Access Copy Runtime:') +1])
-                except ValueError:
-                    ac_runtime = None
-            else:
-                ac_runtime = "not logged"
-            if 'Preservation Master Runtime:' in data:
-                try:
-                    pm_runtime = float(data[data.index('Preservation Master Runtime:') +1])
-                except ValueError:
-                    pm_runtime = None
-                    print ("pm runtime is not a float")
-            else:
-                pm_runtime = "not logged"
-            if ac_runtime and pm_runtime and not "not logged" in [ac_runtime] and not "not logged" in [pm_runtime]:
-                runtime_total = ac_runtime - pm_runtime
-                if abs(runtime_total) > 0.01 or not 'None' in checksums1 or not 'None' in checksums2:
-                    if runtime_total > 0.01:
-                        print('\t'"Access copy is", runtime_total, "seconds longer than FFV1 file")
-                    elif runtime_total < -0.01:
-                        print('\t'"Access copy is", abs(runtime_total), "seconds shorter than FFV1 file")
-            elif pm_runtime and not ac_runtime:
-                print('\t'"ac runtime is not a float")
-            elif not pm_runtime and not ac_runtime:
-                print('\t'"ac and pm runtimes are not floats")
-            elif "not logged" in pm_runtime and "not logged" in ac_runtime:
-                print('\t'"ac and pm runtimes were not logged")
-            elif "not logged" in pm_runtime and not "not logged" in ac_runtime:
-                print('\t'"pm runtime was not logged")
-            elif not "not logged" in pm_runtime and "not logged" in ac_runtime:
-                print('\t'"ac runtime was not logged")
-
-def create_checksum_manifest(folder):
-    file_set = set()
-    for dir_, _, files in os.walk(folder):
-        for file_name in files:
-            rel_dir = os.path.relpath(dir_, folder)
-            rel_file = os.path.join(rel_dir, file_name).replace(os.sep, posixpath.sep)
-            #probably not the most efficient way to bypass the base folder
-            #but it works
-            if not "./" in rel_file:
-                md5chksum = hashlib_md5(os.path.join(folder, rel_dir, file_name))
-                md5out = md5chksum + " *" + rel_file
-                file_set.add(md5out)
-    return file_set
 
 def ffv1_lossless_transcode_cleanup(tmpmkv, framemd5):
     try:
@@ -383,3 +170,65 @@ def checksum_streams(ffmpegPath, input, input_techMetaA):
     stream_sum_command.extend(('-f', 'md5', '-'))
     stream_sum = subprocess.check_output(stream_sum_command).decode("ascii").rstrip()
     return stream_sum
+
+def two_pass_h264_encoding(ffmpegPath, audioStreamCounter, pmAbsPath, acAbsPath):
+    #add flag to exclude attachments
+    if os.name == 'nt':
+        nullOut = 'NUL'
+    else:
+        nullOut = '/dev/null'
+    pass1 = [ffmpegPath, '-loglevel', 'error', '-y', '-i', pmAbsPath, '-c:v', 'libx264', '-preset', 'medium', '-b:v', '8000k', '-pix_fmt', 'yuv420p', '-pass', '1']
+    if audioStreamCounter > 0:
+        #TO DO: map audio to stereo pairs if first two are mono? if tracks >= 2, combine the first 2 to stereo
+        pass1 += ['-c:a', 'aac', '-b:a', '128k']
+    pass1 += ['-f', 'mp4', nullOut]
+    pass2 = [ffmpegPath, '-loglevel', 'error', '-i', pmAbsPath, '-c:v', 'libx264', '-preset', 'medium', '-b:v', '8000k', '-pix_fmt', 'yuv420p', '-pass', '2']
+    if audioStreamCounter > 0:
+        #TO DO: map audio to stereo pairs if first two are mono? if tracks >= 2, combine the first 2 to stereo
+        pass2 += ['-c:a', 'aac', '-b:a', '128k']
+    pass2 += [acAbsPath]
+    subprocess.run(pass1)
+    subprocess.run(pass2)
+
+def generate_spectrogram(ffmpegPath, input, channel_layout_list, outputFolder, outputName):
+    spectrogram_resolution = "1928x1080"
+    for index, item in enumerate(channel_layout_list):
+        output = os.path.join(outputFolder, outputName + '_0a' + str(index) + '.png')
+        spectrogram_args = [ffmpegPath]
+        spectrogram_args += ['-loglevel', 'error']
+        spectrogram_args += ['-i', input, '-lavfi']
+        if item > 1:
+            spectrogram_args += ['[0:a:%(a)s]showspectrumpic=mode=separate:s=%(b)s' % {"a" : index, "b" : spectrogram_resolution}]
+        else:
+            spectrogram_args += ['[0:a:%(a)s]showspectrumpic=s=%(b)s' % {"a" : index, "b" : spectrogram_resolution}]
+        spectrogram_args += [output]
+        subprocess.run(spectrogram_args)
+
+def make_qctools(input):
+    '''
+    Source: IFI Scripts
+    Runs an ffprobe process that stores QCTools XML info as a variable.
+    A file is not actually created here.
+    '''
+    qctools_args = [args.ffprobe_path, '-f', 'lavfi', '-i',]
+    qctools_args += ["movie=%s:s=v+a[in0][in1],[in0]signalstats=stat=tout+vrep+brng,cropdetect=reset=1:round=1,split[a][b];[a]field=top[a1];[b]field=bottom[b1],[a1][b1]psnr[out0];[in1]ebur128=metadata=1,astats=metadata=1:reset=1:length=0.4[out1]" % input]
+    qctools_args += ['-show_frames', '-show_versions', '-of', 'xml=x=1:q=1', '-noprivate']
+    print(qctools_args)
+    qctoolsreport = subprocess.check_output(qctools_args).decode("ascii").rstrip()
+    return str(qctoolsreport)
+
+def write_qctools_gz(qctoolsxml, sourcefile):
+    '''
+    Source: IFI Scripts
+    This accepts a variable containing XML that is written to a file.
+    '''
+    with open(qctoolsxml, "w+") as f:
+        f.write(make_qctools(sourcefile))
+    #TO DO check if gzip exists before running qctools
+    #on Windows install cygwin, then in Windows go to Edit the System Environment Variables
+    #In Advanced tab, click Environment Variables button
+    #In new window, select Path under User Variables for your username and then Edit
+    #Add C:\cygwin64\bin
+    #gzip should now be accessible from the Windows command line
+    subprocess.call(['gzip', qctoolsxml])
+    #use subprocess.run
