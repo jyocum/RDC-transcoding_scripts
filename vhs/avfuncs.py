@@ -38,6 +38,12 @@ def create_transcode_output_folders(baseOutput, outputFolderList):
         else:
             print ("using existing folder", folder, "as output")
 
+def mediaconch_policy_exists(policy_path):
+    if not os.path.isfile(policy_path):
+        print("unable to find mediaconch policy:", policy_path)
+        print("Check if file exists before running")
+        quit()
+
 def get_ffmpeg_version(ffmpegPath):
     '''
     Returns the version of ffmpeg
@@ -83,15 +89,15 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     returns dictionaries with ffprobe metadata
     '''
     video_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=codec_name,avg_frame_rate,codec_time_base,width,height,pix_fmt,sample_aspect_ratio,display_aspect_ratio,color_range,color_space,color_transfer,color_primaries,chroma_location,field_order,codec_tag_string', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
-    audio_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_long_name,bits_per_sample,sample_rate,channels', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
+    audio_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_long_name,bits_per_raw_sample,sample_rate,channels', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     format_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-show_entries', 'format=duration,size,nb_streams', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     data_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'd', '-show_entries', 'stream=codec_tag_string', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     attachment_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 't', '-show_entries', 'stream_tags=filename', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     
     #cleaning up data_output
-    if data_output.get('streams'):
-        for i in data_output.get('streams'):
-            i['data type'] = i.pop('codec_tag_string')
+    #if data_output.get('streams'):
+    #    for i in data_output.get('streams'):
+    #        i['data type'] = i.pop('codec_tag_string')
     #cleaning up attachment output
     tags = [streams.get('tags') for streams in (attachment_output['streams'])]
     attachment_list = []
@@ -105,7 +111,7 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     video_codec_name_list = [stream.get('codec_name') for stream in (video_output['streams'])]
     audio_codec_name_list = [stream.get('codec_long_name') for stream in (audio_output['streams'])]
     total_stream_count = format_output.get('format')['nb_streams']
-    data_streams = data_output.get('streams')
+    data_streams = [stream.get('codec_tag_string') for stream in (data_output['streams'])]
     width = [stream.get('width') for stream in (video_output['streams'])][0]
     height = [stream.get('height') for stream in (video_output['streams'])][0]
     pixel_format = [stream.get('pix_fmt') for stream in (video_output['streams'])][0]
@@ -116,7 +122,7 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     color_range = [stream.get('color_range') for stream in (video_output['streams'])][0]
     color_transfer = [stream.get('color_transfer') for stream in (video_output['streams'])][0]
     color_primaries = [stream.get('color_primaries') for stream in (video_output['streams'])][0]
-    audio_bitrate = [stream.get('bits_per_sample') for stream in (audio_output['streams'])]
+    audio_bitrate = [stream.get('bits_per_raw_sample') for stream in (audio_output['streams'])]
     audio_sample_rate = [stream.get('sample_rate') for stream in (audio_output['streams'])]
     audio_channels = [stream.get('channels') for stream in (audio_output['streams'])]
     audio_stream_count = len(audio_codec_name_list)
@@ -151,7 +157,9 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     'channels' : audio_channels
     }
     
-    return file_metadata, techMetaV, techMetaA
+    ffprobe_metadata = {'file metadata' : file_metadata, 'techMetaV' : techMetaV, 'techMetaA' : techMetaA}
+    return ffprobe_metadata
+    #return file_metadata, techMetaV, techMetaA
 
 def ffv1_lossless_transcode_cleanup(tmpmkv, framemd5):
     try:
@@ -169,9 +177,10 @@ def checksum_streams(ffmpegPath, input, input_techMetaA):
         stream_sum_command.extend(('-map', '0:a'))
     stream_sum_command.extend(('-f', 'md5', '-'))
     stream_sum = subprocess.check_output(stream_sum_command).decode("ascii").rstrip()
+    stream_sum = stream_sum.replace('MD5=', '')
     return stream_sum
 
-def two_pass_h264_encoding(ffmpegPath, audioStreamCounter, pmAbsPath, acAbsPath):
+def two_pass_h264_encoding(ffmpegPath, audioStreamCounter, mixdown, pmAbsPath, acAbsPath):
     #add flag to exclude attachments
     if os.name == 'nt':
         nullOut = 'NUL'
@@ -179,13 +188,21 @@ def two_pass_h264_encoding(ffmpegPath, audioStreamCounter, pmAbsPath, acAbsPath)
         nullOut = '/dev/null'
     pass1 = [ffmpegPath, '-loglevel', 'error', '-y', '-i', pmAbsPath, '-c:v', 'libx264', '-preset', 'medium', '-b:v', '8000k', '-pix_fmt', 'yuv420p', '-pass', '1']
     if audioStreamCounter > 0:
-        #TO DO: map audio to stereo pairs if first two are mono? if tracks >= 2, combine the first 2 to stereo
-        pass1 += ['-c:a', 'aac', '-b:a', '128k']
+        if mixdown == 'copy':    
+            pass1 += ['-c:a', 'aac', '-b:a', '128k']
+        if mixdown == '4to3' and audioStreamCounter == 4:
+            pass1 += ['-filter_complex', '[0:a:0][0:a:1]amerge=inputs=2[a]', '-map', '0:v', '-map', '[a]', '-map', '0:a:2', '-map', '0:a:3']
+        if mixdown == '4to2' and audioStreamCounter == 4:
+            pass1 += ['-filter_complex', '[0:a:0][0:a:1]amerge=inputs=2[a];[0:a:2][0:a:3]amerge=inputs=2[b]', '-map', '0:v', '-map', '[a]', '-map', '[b]']
     pass1 += ['-f', 'mp4', nullOut]
-    pass2 = [ffmpegPath, '-loglevel', 'error', '-i', pmAbsPath, '-c:v', 'libx264', '-preset', 'medium', '-b:v', '8000k', '-pix_fmt', 'yuv420p', '-pass', '2']
+    pass2 = [ffmpegPath, '-loglevel', 'error', '-y', '-i', pmAbsPath, '-c:v', 'libx264', '-preset', 'medium', '-b:v', '8000k', '-pix_fmt', 'yuv420p', '-pass', '2']
     if audioStreamCounter > 0:
-        #TO DO: map audio to stereo pairs if first two are mono? if tracks >= 2, combine the first 2 to stereo
-        pass2 += ['-c:a', 'aac', '-b:a', '128k']
+        if mixdown == 'copy':
+            pass2 += ['-c:a', 'aac', '-b:a', '128k']
+        if mixdown == '4to3' and audioStreamCounter == 4:
+            pass2 += ['-filter_complex', '[0:a:0][0:a:1]amerge=inputs=2[a]', '-map', '0:v', '-map', '[a]', '-map', '0:a:2', '-map', '0:a:3']
+        if mixdown == '4to2' and audioStreamCounter == 4:
+            pass2 += ['-filter_complex', '[0:a:0][0:a:1]amerge=inputs=2[a];[0:a:2][0:a:3]amerge=inputs=2[b]', '-map', '0:v', '-map', '[a]', '-map', '[b]']
     pass2 += [acAbsPath]
     subprocess.run(pass1)
     subprocess.run(pass2)
@@ -195,7 +212,7 @@ def generate_spectrogram(ffmpegPath, input, channel_layout_list, outputFolder, o
     for index, item in enumerate(channel_layout_list):
         output = os.path.join(outputFolder, outputName + '_0a' + str(index) + '.png')
         spectrogram_args = [ffmpegPath]
-        spectrogram_args += ['-loglevel', 'error']
+        spectrogram_args += ['-loglevel', 'error', '-y']
         spectrogram_args += ['-i', input, '-lavfi']
         if item > 1:
             spectrogram_args += ['[0:a:%(a)s]showspectrumpic=mode=separate:s=%(b)s' % {"a" : index, "b" : spectrogram_resolution}]
@@ -204,31 +221,81 @@ def generate_spectrogram(ffmpegPath, input, channel_layout_list, outputFolder, o
         spectrogram_args += [output]
         subprocess.run(spectrogram_args)
 
-def make_qctools(input):
-    '''
-    Source: IFI Scripts
-    Runs an ffprobe process that stores QCTools XML info as a variable.
-    A file is not actually created here.
-    '''
-    qctools_args = [args.ffprobe_path, '-f', 'lavfi', '-i',]
-    qctools_args += ["movie=%s:s=v+a[in0][in1],[in0]signalstats=stat=tout+vrep+brng,cropdetect=reset=1:round=1,split[a][b];[a]field=top[a1];[b]field=bottom[b1],[a1][b1]psnr[out0];[in1]ebur128=metadata=1,astats=metadata=1:reset=1:length=0.4[out1]" % input]
-    qctools_args += ['-show_frames', '-show_versions', '-of', 'xml=x=1:q=1', '-noprivate']
-    print(qctools_args)
-    qctoolsreport = subprocess.check_output(qctools_args).decode("ascii").rstrip()
-    return str(qctoolsreport)
-
-def write_qctools_gz(qctoolsxml, sourcefile):
-    '''
-    Source: IFI Scripts
-    This accepts a variable containing XML that is written to a file.
-    '''
-    with open(qctoolsxml, "w+") as f:
-        f.write(make_qctools(sourcefile))
-    #TO DO check if gzip exists before running qctools
-    #on Windows install cygwin, then in Windows go to Edit the System Environment Variables
-    #In Advanced tab, click Environment Variables button
-    #In new window, select Path under User Variables for your username and then Edit
-    #Add C:\cygwin64\bin
-    #gzip should now be accessible from the Windows command line
-    subprocess.call(['gzip', qctoolsxml])
+def generate_qctools(qcliPath, input):
+    print ("qcli input =", input)
+    qctools_args = [qcliPath, '-i', input]
+    subprocess.run(qctools_args)
     #use subprocess.run
+
+def run_mediaconch(mediaconchPath, input, policy):
+    mediaconchResults = subprocess.check_output([mediaconchPath, '--policy=' + policy, input]).decode("ascii").rstrip().split()[0]
+    if mediaconchResults == "pass!":
+        mediaconchResults = "PASS"
+    else:
+        mediaconchResults = "FAIL"
+    return mediaconchResults
+
+def generate_system_log(ffmpegPath, tstime, tftime):
+    #gather system info for json output
+    osinfo = platform.platform()
+    ffvers = get_ffmpeg_version(ffmpegPath)
+    systemInfo = {
+    'operating system': osinfo,
+    'ffmpeg version': ffvers,
+    'transcode start time': tstime,
+    'transcode end time': tftime
+    #TO DO: add capture software/version maybe -- would have to pull from csv
+    }
+    return systemInfo
+    
+def create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_file_metadata, input_techMetaV, input_techMetaA, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, streamMD5status, output_file_metadata, output_techMetaV, output_techMetaA, MOV_mediaconchResults):
+     
+    #create dictionary for json output
+    data = {}
+    data[baseFilename] = []
+
+    #gather pre and post transcode file metadata for json output
+    mov_file_meta = {}
+    ffv1_file_meta = {}
+    mov_file_meta[input] = []
+    ffv1_file_meta[mkvFilename] = []
+    #add stream checksums to metadata
+    mov_md5_dict = {'a/v streamMD5': mov_stream_sum}
+    ffv1_md5_dict = {'md5 checksum': mkvHash, 'a/v streamMD5': mkv_stream_sum}
+    input_file_metadata = {**input_file_metadata, **mov_md5_dict}
+    output_file_metadata = {**output_file_metadata, **ffv1_md5_dict}
+    mov_file_meta[input].append(input_file_metadata)
+    ffv1_file_meta[mkvFilename].append(output_file_metadata)
+    
+    #gather technical metadata for json output
+    techdata = {}
+    video_techdata = {}
+    audio_techdata = {}
+    techdata['technical metadata'] = []
+    video_techdata['video'] = []
+    audio_techdata['audio'] = []
+    video_techdata['video'].append(input_techMetaV)
+    audio_techdata['audio'].append(input_techMetaA)
+    techdata['technical metadata'].append(video_techdata)
+    techdata['technical metadata'].append(audio_techdata)
+    
+    QC_results = {}
+    QC_results['QC'] = []
+    if output_techMetaA == input_techMetaA and output_techMetaV == input_techMetaV:
+        QC_techMeta = "PASS"
+    else:
+        print("input and output technical metadata do not match")
+        QC_techMeta = "FAIL"
+    QC_results['QC'] = {
+    'Pre/Post Transcode Technical Metadata': QC_techMeta,
+    'MOV Mediaconch Policy': MOV_mediaconchResults,
+    'Stream Checksums': streamMD5status
+    }
+
+    data[baseFilename].append(systemInfo)
+    data[baseFilename].append(ffv1_file_meta)
+    data[baseFilename].append(mov_file_meta)        
+    data[baseFilename].append(techdata)
+    data[baseFilename].append(QC_results)
+    with open(os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json'), 'w', newline='\n') as outfile:
+        json.dump(data, outfile, indent=4)
