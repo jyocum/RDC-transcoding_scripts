@@ -38,12 +38,6 @@ def create_transcode_output_folders(baseOutput, outputFolderList):
         else:
             print ("using existing folder", folder, "as output")
 
-def mediaconch_policy_exists(policy_path):
-    if not os.path.isfile(policy_path):
-        print("unable to find mediaconch policy:", policy_path)
-        print("Check if file exists before running")
-        quit()
-
 def get_ffmpeg_version(ffmpegPath):
     '''
     Returns the version of ffmpeg
@@ -58,9 +52,54 @@ def get_ffmpeg_version(ffmpegPath):
         quit()
     return ffmpeg_version
 
+def qcli_check(qcliPath):
+    '''
+    checks that qcli exists by running its -version command
+    '''
+    try:
+        subprocess.check_output([qcliPath, '-version']).decode("ascii").rstrip().splitlines()[0]
+    except:
+        print('Error locating qcli')
+        quit()
+
+def mediaconch_check(mediaconchPath):
+    '''
+    checks that mediaconch exists by running its -v command
+    ''' 
+    try:
+        subprocess.check_output([mediaconchPath, '-v']).decode("ascii").rstrip().splitlines()[0]
+    except:
+        print('Error locating mediaconch')
+        quit()
+
+def ffprobe_check(ffprobePath):
+    '''
+    checks that ffprobe exists by running its -version command
+    '''
+    try:
+        subprocess.check_output([ffprobePath, '-version']).decode("ascii").rstrip().splitlines()[0].split()[2]
+    except:
+        print("Error locating ffprobe")
+        quit()
+    
+def check_mixdown_arg(mixdown):
+    mixdown_list = ['copy', '4to3', '4to2']
+    #TO DO add swap as an option to allow switching tracks 3&4 with tracks 1&2
+    if not mixdown in mixdown_list:
+        print("The selected audio mixdown is not a valid value")
+        print ("please use one of: copy, swap, 4to3, 4to2")
+        quit()  
+
+def mediaconch_policy_exists(policy_path):
+    if not os.path.isfile(policy_path):
+        print("unable to find mediaconch policy:", policy_path)
+        print("Check if file exists before running")
+        quit()
+
 def hashlib_md5(filename):
     '''
     Uses hashlib to return an MD5 checksum of an input filename
+    Credit: IFI scripts
     '''
     read_size = 0
     last_percent_done = 0
@@ -81,12 +120,10 @@ def hashlib_md5(filename):
                 last_percent_done = percent_done
     md5_output = chksm.hexdigest()
     return md5_output
-#this function is from the IFI's scripts with a minor change
-#open(str(filename)), 'rb') as f has been changed to open(filename, 'rb') as f
 
 def ffprobe_report(ffprobePath, input_file_abspath):
     '''
-    returns dictionaries with ffprobe metadata
+    returns nested dictionary with ffprobe metadata
     '''
     video_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=codec_name,avg_frame_rate,codec_time_base,width,height,pix_fmt,sample_aspect_ratio,display_aspect_ratio,color_range,color_space,color_transfer,color_primaries,chroma_location,field_order,codec_tag_string', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     audio_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_long_name,bits_per_raw_sample,sample_rate,channels', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
@@ -94,10 +131,6 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     data_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 'd', '-show_entries', 'stream=codec_tag_string', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     attachment_output = json.loads(subprocess.check_output([ffprobePath, '-v', 'error', '-select_streams', 't', '-show_entries', 'stream_tags=filename', input_file_abspath, '-of', 'json']).decode("ascii").rstrip())
     
-    #cleaning up data_output
-    #if data_output.get('streams'):
-    #    for i in data_output.get('streams'):
-    #        i['data type'] = i.pop('codec_tag_string')
     #cleaning up attachment output
     tags = [streams.get('tags') for streams in (attachment_output['streams'])]
     attachment_list = []
@@ -105,12 +138,9 @@ def ffprobe_report(ffprobePath, input_file_abspath):
         filename = [i.get('filename')]
         attachment_list.extend(filename)
     
-    #parse ffprobe metadata    
-    file_size = format_output.get('format')['size']
-    duration = format_output.get('format')['duration']
+    #parse ffprobe metadata lists
     video_codec_name_list = [stream.get('codec_name') for stream in (video_output['streams'])]
     audio_codec_name_list = [stream.get('codec_long_name') for stream in (audio_output['streams'])]
-    total_stream_count = format_output.get('format')['nb_streams']
     data_streams = [stream.get('codec_tag_string') for stream in (data_output['streams'])]
     width = [stream.get('width') for stream in (video_output['streams'])][0]
     height = [stream.get('height') for stream in (video_output['streams'])][0]
@@ -128,9 +158,9 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     audio_stream_count = len(audio_codec_name_list)
     
     file_metadata = {
-    'file size': file_size,
-    'duration': duration,
-    'streams' : total_stream_count,
+    'file size': format_output.get('format')['size'],
+    'duration': format_output.get('format')['duration'],
+    'streams' : format_output.get('format')['nb_streams'],
     'video streams': video_codec_name_list,
     'audio streams' : audio_codec_name_list,
     'data streams' : data_streams,
@@ -158,10 +188,13 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     }
     
     ffprobe_metadata = {'file metadata' : file_metadata, 'techMetaV' : techMetaV, 'techMetaA' : techMetaA}
+    
     return ffprobe_metadata
-    #return file_metadata, techMetaV, techMetaA
 
 def ffv1_lossless_transcode_cleanup(tmpmkv, framemd5):
+    '''
+    Removes temporary files created when losslessly transcoding v210 to FFV1
+    '''
     try:
         os.remove(tmpmkv)
     except FileNotFoundError:
@@ -171,9 +204,13 @@ def ffv1_lossless_transcode_cleanup(tmpmkv, framemd5):
     except FileNotFoundError:
         print ("framemd5 file seems to be missing")
 
-def checksum_streams(ffmpegPath, input, input_techMetaA):
+def checksum_streams(ffmpegPath, input, audioStreamCounter):
+    '''
+    Gets the stream md5 of a file
+    Uses both video and all audio streams if audio is present
+    '''
     stream_sum_command = [ffmpegPath, '-loglevel', 'error', '-i', input, '-map', '0:v']
-    if input_techMetaA.get('audio stream count') > 0:
+    if audioStreamCounter > 0:
         stream_sum_command.extend(('-map', '0:a'))
     stream_sum_command.extend(('-f', 'md5', '-'))
     stream_sum = subprocess.check_output(stream_sum_command).decode("ascii").rstrip()
@@ -208,6 +245,9 @@ def two_pass_h264_encoding(ffmpegPath, audioStreamCounter, mixdown, pmAbsPath, a
     subprocess.run(pass2)
 
 def generate_spectrogram(ffmpegPath, input, channel_layout_list, outputFolder, outputName):
+    '''
+    Creates a spectrogram for each audio track in the input
+    '''
     spectrogram_resolution = "1928x1080"
     for index, item in enumerate(channel_layout_list):
         output = os.path.join(outputFolder, outputName + '_0a' + str(index) + '.png')
@@ -222,10 +262,11 @@ def generate_spectrogram(ffmpegPath, input, channel_layout_list, outputFolder, o
         subprocess.run(spectrogram_args)
 
 def generate_qctools(qcliPath, input):
-    print ("qcli input =", input)
+    '''
+    uses qcli to generate a QCTools report
+    '''
     qctools_args = [qcliPath, '-i', input]
     subprocess.run(qctools_args)
-    #use subprocess.run
 
 def run_mediaconch(mediaconchPath, input, policy):
     mediaconchResults = subprocess.check_output([mediaconchPath, '--policy=' + policy, input]).decode("ascii").rstrip().split()[0]
@@ -235,10 +276,9 @@ def run_mediaconch(mediaconchPath, input, policy):
         mediaconchResults = "FAIL"
     return mediaconchResults
 
-def generate_system_log(ffmpegPath, tstime, tftime):
+def generate_system_log(ffvers, tstime, tftime):
     #gather system info for json output
     osinfo = platform.platform()
-    ffvers = get_ffmpeg_version(ffmpegPath)
     systemInfo = {
     'operating system': osinfo,
     'ffmpeg version': ffvers,
@@ -248,7 +288,13 @@ def generate_system_log(ffmpegPath, tstime, tftime):
     }
     return systemInfo
     
-def create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_file_metadata, input_techMetaV, input_techMetaA, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, streamMD5status, output_file_metadata, output_techMetaV, output_techMetaA, MOV_mediaconchResults):
+def create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, streamMD5status, output_metadata, MOV_mediaconchResults):
+    input_techMetaV = input_metadata.get('techMetaV')
+    input_techMetaA = input_metadata.get('techMetaA')
+    input_file_metadata = input_metadata.get('file metadata')
+    output_techMetaV = output_metadata.get('techMetaV')
+    output_techMetaA = output_metadata.get('techMetaA')
+    output_file_metadata = output_metadata.get('file metadata')
      
     #create dictionary for json output
     data = {}
