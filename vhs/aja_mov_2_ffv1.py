@@ -8,68 +8,28 @@ import avfuncs
 import subprocess
 import datetime
 import json
-import csv
-import time
 import equipment_dict
+from mov2ffv1parameters import args
 
 if sys.version_info[0] < 3:
     raise Exception("Python 3 or a more recent version is required.")
 
-parser = argparse.ArgumentParser()
-
-parser.add_argument('--input', '-i', action='store', dest='input_path', type=str, help='full path to input folder')
-parser.add_argument('--output', '-o', action='store', dest='output_path', type=str, help='full path to output folder')
-parser.add_argument('--ffmpeg', action='store', dest='ffmpeg_path', default='ffmpeg', type=str, help='The full path to ffmpeg.  Use on Windows if executing script from somewhere other than where ffmpeg is located')
-parser.add_argument('--ffprobe', action='store', dest='ffprobe_path', default='ffprobe', type=str, help='The full path to ffprobe.  Use on Windows if executing script from somewhere other than where ffprobe is located')
-parser.add_argument('--qcli', action='store', dest='qcli_path', default='qcli', type=str, help='The full path to qcli.  Use on Windows if executing script from somewhere other than where qcli is located')
-parser.add_argument('--mediaconch', action='store', dest='mediaconch_path', default='mediaconch', type=str, help='The full path to qcli.  Use on Windows if executing script from somewhere other than where qcli is located')
-parser.add_argument('--verbose', required=False, action='store', help='view ffmpeg output when transcoding')
-parser.add_argument('--mixdown', action='store', dest='mixdown', default='copy', type=str, help='How the audio streams will be mapped for the access copy. If excluded, this will default to copying the stream configuration of the input. Inputs include: copy, 4to3, and 4to2. 4to3 takes 4 mono tracks and mixes tracks 1&2 to stereo while leaving tracks 3&4 mono. 4to2 takes 4 mono tracks and mixes tracks 1&2 and 3&4 to stereo.')
-
-args = parser.parse_args()
-
-#TO DO (low priority): collect all args into a single list or dictionary so that you can easily pass them between functions
-#in particular, should concatenate paths to tools into a list or dictionary so that tools for logging and json creation functions are more portable (for example, also being usable for film transcoding despite using some different tools)
+parameterDict = vars(args)
 
 pm_identifier = 'pm'
 ac_identifier = 'ac'
 inventoryName = 'transcode_inventory.csv'
 metadata_identifier = 'meta'
 ffv1_slice_count = '16'
-ffmpegPath = args.ffmpeg_path
-ffprobePath = args.ffprobe_path
-qcliPath = args.qcli_path
-mediaconchPath = args.mediaconch_path
-mixdown = args.mixdown
-    
-def input_check(indir):
-    if '-i' in sys.argv or '--input' in sys.argv:
-        indir = args.input_path
-    else:
-        print ("No input provided")
-        quit()
-
-    if not os.path.isdir(indir):
-        print('input is not a directory')
-        quit()
-    return indir
-
-def output_check(outdir):
-    #if output directory is not specified, input directory will be used
-    if '-o' in sys.argv or '--output' in sys.argv:
-        outdir = args.output_path
-    else:
-        print('Output not specified. Using input directory as Output directory')
-        outdir = args.input_path
-    
-    if not os.path.isdir(outdir):
-        print('output is not a directory')
-        quit()
-    return (outdir)
+ffmpegPath = parameterDict.get('ffmpeg_path')
+ffprobePath = parameterDict.get('ffprobe_path')
+qcliPath = parameterDict.get('qcli_path')
+mediaconchPath = parameterDict.get('mediaconch_path')
+mixdown = parameterDict.get('mixdown')
         
 #assign input directory and output directory
-indir = input_check(args.input_path)
-outdir = output_check(args.output_path)
+indir = avfuncs.input_check(parameterDict)
+outdir = avfuncs.output_check(parameterDict)
 #check that mixdown argument is valid if provided
 avfuncs.check_mixdown_arg(mixdown)
 #check that required programs are present
@@ -85,6 +45,8 @@ avfuncs.mediaconch_policy_exists(movPolicy)
 #avfuncs.mediaconch_policy_exists(mkvPolicy)
 
 csvInventory = os.path.join(indir, inventoryName)
+#TO DO: separate out csv and json related vunctions that are currently in avfuncs into dedicated csv or json related py files
+csvDict = avfuncs.import_csv(csvInventory, equipment_dict)
 
 for input in glob.glob1(indir, "*.mov"):
     inputAbsPath = os.path.join(indir, input)
@@ -102,98 +64,16 @@ for input in glob.glob1(indir, "*.mov"):
     tstime = 'Pending'
     #transcode finish time
     tftime = 'Pending'    
-     
-    #THIS IS CURRENTLY HERE FOR TESTING
-    #remove if planning to use
-    if os.path.isfile(csvInventory):
+    
+    #get information about item from csv inventory
+    try:
+        csvDict = csvDict.get(baseFilename)
+    except:
+        print("unable to locate", baseFilename, "in csv data.")
         csvDict = {}
-        #TO DO: check if equipment_dict exists
-        equipment_dict = equipment_dict.equipment_dict()
-        with open(csvInventory)as f:
-            reader = csv.DictReader(f, delimiter=',')
-            for row in reader:
-                name = row['File name']
-                #date needs to be formatted as yyyy-mm-dd
-                captureDate = row['Capture Date']
-                def guess_date(string):
-                    for fmt in ["%m/%d/%Y", "%d-%m-%Y", "%m/%d/%y"]:
-                        try:
-                            return datetime.datetime.strptime(string, fmt).date()
-                        except ValueError:
-                            continue
-                    raise ValueError(string)
-
-                captureDate = str(guess_date(captureDate))
-                digitizationOperator = row['Digitization Operator']
-                vtr = row['VTR']
-                vtrOut = row['VTR Output Used']
-                tbc = row['TBC']
-                tbcOut = row['TBC Output Used']
-                adc = row['Capture Device']
-                id1 = row['Accession number/Call number']
-                id2 = row['ALMA number/Finding Aid']
-                if vtr.split(';')[0] in equipment_dict.keys():
-                    #TO DO: also grab SP tape and tape brand?
-                    #TO DO: make adding vtrOut conditional so that the ; only appears if it is present
-                    coding_history = equipment_dict[vtr.split(';')[0]]['Coding Algorithm'] + ',' + 'T=' + vtr + '; ' + vtrOut
-                    #TO DO: add functional failure state - try to compile data with less strict formatting
-                    #TO DO: make sure that coding_history is not empty before adding a new line
-                if tbc.split(';')[0] in equipment_dict.keys():
-                    coding_history = coding_history + '\n'
-                    coding_history = coding_history + equipment_dict[tbc.split(';')[0]]['Coding Algorithm'] + ',' + 'T=' + tbc + '; ' + tbcOut
-                csvData = {
-                'Accession number/Call number' : id1,
-                'ALMA number/Finding Aid' : id2,
-                'Digitization Operator' : digitizationOperator,
-                'Capture Date' : captureDate,
-                #'Coding History' : coding_history
-                }
-                csvDict.update({name : csvData})
-            #print (csvDict)
-            print (csvDict.get(baseFilename))
-        #writing qc info to csv file in output
-        header = [
-        "Shot Sheet Check",
-        "Date",
-        "PM Lossless Transcoding",
-        "Date",
-        "File Format & Metadata Verification",
-        "Date",
-        "File Inspection",
-        "Date",
-        "QC Notes",
-        "PM Filename",
-        "Runtime"
-        ]
-        qcDate = str(datetime.datetime.today().strftime('%Y-%m-%d'))
-        csv_file = os.path.join(outdir, "qc_log.csv")
-        csvOutFileExists = os.path.isfile(csv_file)
-        with open(csv_file, 'a') as f:
-            writer = csv.writer(f, delimiter=',', lineterminator='\n')
-            if not csvOutFileExists:
-                writer.writerow(header)
-            writer.writerow([
-            None,
-            None,
-            "PASS",
-            qcDate,
-            "PASS",
-            qcDate,
-            None,
-            None,
-            "QC notes here, with comma",
-            mkvFilename,
-            "my runtime"
-            ])
-        quit()
-    else:
-        print('unable to find csv file')
-        quit()
-        
-        input_metadata = avfuncs.ffprobe_report(ffprobePath, inputAbsPath)
-        #print(input_metadata)
-        #print(input_metadata.get('techMetaV'))
-        #quit()
+    
+    #generate ffprobe metadata from input
+    input_metadata = avfuncs.ffprobe_report(ffprobePath, inputAbsPath)
     
     #check input file in Mediaconch    
     MOV_mediaconchResults = avfuncs.run_mediaconch(mediaconchPath, inputAbsPath, movPolicy)    
@@ -201,12 +81,17 @@ for input in glob.glob1(indir, "*.mov"):
     #create a list of needed output folders and make them
     outFolders = [pmOutputFolder, acOutputFolder, metaOutputFolder]
     avfuncs.create_transcode_output_folders(baseOutput, outFolders)
-
+    '''
+    #****CURRENTLY FOR TESTING - REMOVE FOR ACTUAL USE****
+    with open(os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json'), 'w', newline='\n') as outfile:
+        json.dump(csvDict, outfile, indent=4)
+    quit()
+    ''''
     #build ffmpeg command
     print ("**losslessly transcoding", baseFilename + "**")
     audioStreamCounter = input_metadata['techMetaA']['audio stream count']
     ffmpeg_command = [ffmpegPath]
-    if not args.verbose:
+    if not parameterDict.get('verbose'):
         ffmpeg_command.extend(('-loglevel', 'error'))
     ffmpeg_command.extend(['-i', inputAbsPath, '-map', '0', '-dn', '-c:v', 'ffv1', '-level', '3', '-g', '1', '-slices', ffv1_slice_count, '-slicecrc', '1'])
     if input_metadata['techMetaV']['color primaries']:
@@ -246,22 +131,25 @@ for input in glob.glob1(indir, "*.mov"):
         print ("*verifying losslessness*")
         mov_stream_sum = avfuncs.checksum_streams(ffmpegPath, inputAbsPath, audioStreamCounter)
         mkv_stream_sum = avfuncs.checksum_streams(ffmpegPath, outputAbsPath, audioStreamCounter)
-        if mkv_stream_sum and mov_stream_sum:
-            if mkv_stream_sum == mov_stream_sum:
-                print ('stream checksums match.  Your file is lossless')
-                streamMD5status = "PASS"
-            else:
-                print ('stream checksums do not match.  Output file may not be lossless')
-                streamMD5status = "FAIL"
+        if mkv_stream_sum == mov_stream_sum:
+            print ('stream checksums match.  Your file is lossless')
+            streamMD5status = "PASS"
+        else:
+            print ('stream checksums do not match.  Output file may not be lossless')
+            streamMD5status = "FAIL"
         
         #run ffprobe on the output file
         output_metadata = avfuncs.ffprobe_report(ffprobePath, outputAbsPath)
         #log system info
         systemInfo = avfuncs.generate_system_log(ffvers, tstime, tftime)      
-         
+        
+        qcResults = avfuncs.qc_results(input_metadata, output_metadata, MOV_mediaconchResults, streamMD5status)
+        
+        avfuncs.write_output_csv(outdir, mkvFilename, output_metadata, qcResults)
+        
         #create json metadata file
         #TO DO: clean up how some of this information is passed around. Use dictionaries and nested dictionaries to reduce clutter with variables
-        avfuncs.create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, streamMD5status, output_metadata, MOV_mediaconchResults)
+        avfuncs.create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, output_metadata, csvDict, qcResults)
         
         #create access copy
         print ('*transcoding access copy*')
@@ -282,17 +170,10 @@ for input in glob.glob1(indir, "*.mov"):
         print ("*creating qctools report*")
         avfuncs.generate_qctools(qcliPath, outputAbsPath)
         
-        #placeholder - start building csv output here
-        
-        csvRuntime = time.strftime("%H:%M:%S", time.gmtime(float(output_metadata['file metadata']['duration'])))
-        print ("runtime to print =", csvRuntime)
-        
     else:
         print ('No file in output folder.  Skipping file processing')
 
-#at end, add a function to extract capture notes from csv file; possibly also VCR settings
-
-#add ability to automatically pull trim times from CSV (-ss 00:00:02 -t 02:13:52)?
+#TO DO: (low/not priority) add ability to automatically pull trim times from CSV (-ss 00:00:02 -t 02:13:52)?
 #import time
 #timeIn = [get csv time1]
 #timeOut = [get csv time2]

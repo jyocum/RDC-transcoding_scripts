@@ -6,16 +6,34 @@ import hashlib
 import subprocess
 import platform
 import json
+import csv
+import datetime
+import time
 
-def define_inputfolder(indir, fname):
-    inputfolder = None
-    if '--subfolder_identifier' in sys.argv:
-        subfolder_identifier = args.subfolder_identifier
-        #assigning folder to act on as either foldername or foldername/pm
-        inputfolder = os.path.join(indir, fname, subfolder_identifier)
+def input_check(parameterDict):
+    if parameterDict.get('input_path'):
+        indir = parameterDict.get('input_path')
     else:
-        inputfolder = os.path.join(indir, fname)
-    return inputfolder
+        print ("No input provided")
+        quit()
+
+    if not os.path.isdir(indir):
+        print('input is not a directory')
+        quit()
+    return indir
+
+def output_check(parameterDict):
+    if parameterDict.get('output_path'):
+        outdir = parameterDict.get('output_path')
+    #if output directory is not specified, input directory will be used
+    else:
+        print('Output not specified. Using input directory as Output directory')
+        outdir = parameterDict.get('input_path')
+    
+    if not os.path.isdir(outdir):
+        print('output is not a directory')
+        quit()
+    return (outdir)
 
 def create_transcode_output_folders(baseOutput, outputFolderList):
     if not os.path.isdir(baseOutput):
@@ -287,8 +305,141 @@ def generate_system_log(ffvers, tstime, tftime):
     #TO DO: add capture software/version maybe -- would have to pull from csv
     }
     return systemInfo
+
+def qc_results(input_metadata, output_metadata, MOV_mediaconchResults, streamMD5status):
+    QC_results = {}
+    QC_results['QC'] = []
+    if output_metadata.get('output_techMetaA') == input_metadata.get('input_techMetaA') and output_metadata.get('output_techMetaV') == output_metadata.get('input_techMetaV'):
+        QC_techMeta = "PASS"
+    else:
+        print("input and output technical metadata do not match")
+        QC_techMeta = "FAIL"
+    QC_results['QC'] = {
+    'Pre/Post Transcode Technical Metadata': QC_techMeta,
+    'MOV Mediaconch Policy': MOV_mediaconchResults,
+    'Stream Checksums': streamMD5status
+    }
+    return QC_results
+
+def guess_date(string):
+    for fmt in ["%m/%d/%Y", "%d-%m-%Y", "%m/%d/%y"]:
+        try:
+            return datetime.datetime.strptime(string, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(string)
     
-def create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, streamMD5status, output_metadata, MOV_mediaconchResults):
+def import_csv(csvInventory, equipment_dict):
+    csvDict = {}
+    equipment_dict = equipment_dict.equipment_dict()
+    try:
+        with open(csvInventory)as f:
+            reader = csv.DictReader(f, delimiter=',')
+            for row in reader:
+                name = row['File name']
+                #date needs to be formatted as yyyy-mm-dd
+                captureDate = row['Capture Date']
+                captureDate = str(guess_date(captureDate))
+                digitizationOperator = row['Digitization Operator']
+                vtr = row['VTR']
+                vtrOut = row['VTR Output Used']
+                tapeBrand = row['Tape Brand']
+                recordMode = row['Tape Record Mode']
+                tbc = row['TBC']
+                tbcOut = row['TBC Output Used']
+                adc = row['Capture Device']
+                id1 = row['Accession number/Call number']
+                id2 = row['ALMA number/Finding Aid']
+                coding_history = []
+                if vtr.split(';')[0] in equipment_dict.keys():
+                #TO DO: write coding history as a list here
+                    #TO DO: also grab SP tape and tape brand
+                    #TO DO: make adding vtrOut conditional so that the ; only appears if it is present
+                    vtr_history = equipment_dict[vtr.split(';')[0]]['Coding Algorithm'] + ',' + 'T=' + vtr
+                    for i in [vtrOut, tapeBrand, recordMode]:
+                        if i:
+                            vtr_history += '; '
+                            vtr_history += i
+                    coding_history.append(vtr_history)
+                #handle case where equipment is not in the equipment_dict using a more general format
+                elif vtr and not vtr.split(';')[0] in equipment_dict.keys():
+                    vtr_history = vtr
+                    for i in [vtrOut, tapeBrand, recordMode]:
+                        if i:
+                            vtr_history += '; '
+                            vtr_history += i
+                    coding_history.append(vtr_history)
+                else:
+                    pass                    
+                if tbc.split(';')[0] in equipment_dict.keys():
+                    tbc_history = equipment_dict[tbc.split(';')[0]]['Coding Algorithm'] + ',' + 'T=' + tbc
+                    for i in [tbcOut]:
+                        if i:
+                            tbc_history += '; '
+                            tbc_history += i
+                    coding_history.append(tbc_history)
+                #handle case where equipment is not in the equipment_dict using a more general format
+                elif tbc and not tbc.split(';')[0] in equipment_dict.keys():
+                    tbc_history = tbc
+                    for i in [tbcOut]:
+                        if i:
+                            tbc_history += '; '
+                            tbc_history += i
+                    coding_history.append(tbc_history)
+                else:
+                    pass
+                csvData = {
+                'Accession number/Call number' : id1,
+                'ALMA number/Finding Aid' : id2,
+                'Digitization Operator' : digitizationOperator,
+                'Capture Date' : captureDate,
+                'Coding History' : coding_history
+                }
+                csvDict.update({name : csvData})
+    except FileNotFoundError:
+        print("Issue importing csv file")
+    return csvDict
+
+def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
+    header = [
+    "Shot Sheet Check",
+    "Date",
+    "PM Lossless Transcoding",
+    "Date",
+    "File Format & Metadata Verification",
+    "Date",
+    "File Inspection",
+    "Date",
+    "QC Notes",
+    "PM Filename",
+    "Runtime"
+    ]
+    
+    csvRuntime = time.strftime("%H:%M:%S", time.gmtime(float(output_metadata['file metadata']['duration'])))
+    #print ("runtime to print =", csvRuntime)
+    qcDate = str(datetime.datetime.today().strftime('%Y-%m-%d'))
+    csv_file = os.path.join(outdir, "qc_log.csv")
+    csvOutFileExists = os.path.isfile(csv_file)
+    
+    with open(csv_file, 'a') as f:
+        writer = csv.writer(f, delimiter=',', lineterminator='\n')
+        if not csvOutFileExists:
+            writer.writerow(header)
+        writer.writerow([
+        None,
+        None,
+        qcResults['QC']['Pre/Post Transcode Technical Metadata'],
+        qcDate,
+        qcResults['QC']['MOV Mediaconch Policy'],
+        qcDate,
+        None,
+        None,
+        None,
+        mkvFilename,
+        csvRuntime
+        ])
+
+def create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, output_metadata, csvDict, qcResults):
     input_techMetaV = input_metadata.get('techMetaV')
     input_techMetaA = input_metadata.get('techMetaA')
     input_file_metadata = input_metadata.get('file metadata')
@@ -325,23 +476,16 @@ def create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath
     techdata['technical metadata'].append(video_techdata)
     techdata['technical metadata'].append(audio_techdata)
     
-    QC_results = {}
-    QC_results['QC'] = []
-    if output_techMetaA == input_techMetaA and output_techMetaV == input_techMetaV:
-        QC_techMeta = "PASS"
-    else:
-        print("input and output technical metadata do not match")
-        QC_techMeta = "FAIL"
-    QC_results['QC'] = {
-    'Pre/Post Transcode Technical Metadata': QC_techMeta,
-    'MOV Mediaconch Policy': MOV_mediaconchResults,
-    'Stream Checksums': streamMD5status
-    }
+    #gather metadata from csv dictionary as capture metadata
+    capture_metadata = {}
+    capture_metadata['inventory metadata'] = []
+    capture_metadata['inventory metadata'].append(csvDict)
 
     data[baseFilename].append(systemInfo)
     data[baseFilename].append(ffv1_file_meta)
     data[baseFilename].append(mov_file_meta)        
     data[baseFilename].append(techdata)
-    data[baseFilename].append(QC_results)
+    data[baseFilename].append(capture_metadata)
+    data[baseFilename].append(qcResults)
     with open(os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json'), 'w', newline='\n') as outfile:
         json.dump(data, outfile, indent=4)
