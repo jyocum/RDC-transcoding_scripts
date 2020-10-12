@@ -4,21 +4,24 @@ import argparse
 import sys
 import os
 import glob
-import avfuncs
 import subprocess
 import datetime
-import json
-import equipment_dict
 from mov2ffv1parameters import args
+import avfuncs
+import corefuncs
 
 if sys.version_info[0] < 3:
     raise Exception("Python 3 or a more recent version is required.")
+
+#TO DO: general cleanup
 
 parameterDict = vars(args)
 
 pm_identifier = 'pm'
 ac_identifier = 'ac'
 inventoryName = 'transcode_inventory.csv'
+mov_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MOV.xml'
+mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-FFV1.xml'
 metadata_identifier = 'meta'
 ffv1_slice_count = '16'
 ffmpegPath = parameterDict.get('ffmpeg_path')
@@ -28,38 +31,40 @@ mediaconchPath = parameterDict.get('mediaconch_path')
 mixdown = parameterDict.get('mixdown')
         
 #assign input directory and output directory
-indir = avfuncs.input_check(parameterDict)
-outdir = avfuncs.output_check(parameterDict)
+indir = corefuncs.input_check(parameterDict)
+outdir = corefuncs.output_check(parameterDict)
 #check that mixdown argument is valid if provided
 avfuncs.check_mixdown_arg(mixdown)
 #check that required programs are present
-avfuncs.qcli_check(qcliPath)
-avfuncs.mediaconch_check(mediaconchPath)
-avfuncs.ffprobe_check(ffprobePath)
+corefuncs.qcli_check(qcliPath)
+corefuncs.mediaconch_check(mediaconchPath)
+corefuncs.ffprobe_check(ffprobePath)
 ffvers = avfuncs.get_ffmpeg_version(ffmpegPath)
 
 #verify that mediaconch policies are present
-movPolicy = os.path.join(os.path.dirname(__file__), 'mediaconch_policies', 'AJA_NTSC_VHS-4AS-MOV.xml')
-avfuncs.mediaconch_policy_exists(movPolicy)
-#mkvPolicy = os.path.join(os.path.dirname(__file__), 'mediaconch_policies', 'AJA_NTSC_VHS-4AS-FFV1.xml')
-#avfuncs.mediaconch_policy_exists(mkvPolicy)
+movPolicy = os.path.join(os.path.dirname(__file__), 'mediaconch_policies', mov_mediaconch_policy)
+corefuncs.mediaconch_policy_exists(movPolicy)
+#mkvPolicy = os.path.join(os.path.dirname(__file__), 'mediaconch_policies', mkv_mediaconch_policy)
+#corefuncs.mediaconch_policy_exists(mkvPolicy)
 
 csvInventory = os.path.join(indir, inventoryName)
-#TO DO: separate out csv and json related vunctions that are currently in avfuncs into dedicated csv or json related py files
-csvDict = avfuncs.import_csv(csvInventory, equipment_dict)
+#TO DO: separate out csv and json related functions that are currently in avfuncs into dedicated csv or json related py files
+csvDict = avfuncs.import_csv(csvInventory)
 
-for input in glob.glob1(indir, "*.mov"):
-    inputAbsPath = os.path.join(indir, input)
-    baseFilename = input.replace('.mov','')
+for movFilename in glob.glob1(indir, "*.mov"):
+    inputAbsPath = os.path.join(indir, movFilename)
+    baseFilename = movFilename.replace('.mov','')
     baseOutput = os.path.join(outdir, baseFilename)
     pmOutputFolder = os.path.join(baseOutput, pm_identifier)
-    acOutputFolder = os.path.join(baseOutput, ac_identifier)
-    metaOutputFolder = os.path.join(baseOutput, metadata_identifier)
     mkvFilename = os.path.join(baseFilename + '-' + pm_identifier + '.mkv')
     outputAbsPath = os.path.join(pmOutputFolder, mkvFilename)
-    acAbsPath = os.path.join(acOutputFolder, baseFilename + '-' + ac_identifier + '.mp4')
     tempMasterFile = os.path.join(pmOutputFolder, baseFilename + '-tmp.mkv')
-    framemd5File = os.path.join(pmOutputFolder, baseFilename + '-' + pm_identifier + '.framemd5')
+    framemd5File = os.path.join(baseFilename + '-' + pm_identifier + '.framemd5')
+    framemd5AbsPath = os.path.join(pmOutputFolder, framemd5File)
+    acOutputFolder = os.path.join(baseOutput, ac_identifier)
+    acAbsPath = os.path.join(acOutputFolder, baseFilename + '-' + ac_identifier + '.mp4')
+    metaOutputFolder = os.path.join(baseOutput, metadata_identifier)
+    jsonOutputFile = os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json')
     #transcode start time
     tstime = 'Pending'
     #transcode finish time
@@ -73,7 +78,7 @@ for input in glob.glob1(indir, "*.mov"):
         csvDict = {}
     
     #generate ffprobe metadata from input
-    input_metadata = avfuncs.ffprobe_report(ffprobePath, inputAbsPath)
+    input_metadata = avfuncs.ffprobe_report(ffprobePath, inputAbsPath, movFilename)
     
     #check input file in Mediaconch    
     MOV_mediaconchResults = avfuncs.run_mediaconch(mediaconchPath, inputAbsPath, movPolicy)    
@@ -81,12 +86,7 @@ for input in glob.glob1(indir, "*.mov"):
     #create a list of needed output folders and make them
     outFolders = [pmOutputFolder, acOutputFolder, metaOutputFolder]
     avfuncs.create_transcode_output_folders(baseOutput, outFolders)
-    '''
-    #****CURRENTLY FOR TESTING - REMOVE FOR ACTUAL USE****
-    with open(os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json'), 'w', newline='\n') as outfile:
-        json.dump(csvDict, outfile, indent=4)
-    quit()
-    ''''
+
     #build ffmpeg command
     print ("**losslessly transcoding", baseFilename + "**")
     audioStreamCounter = input_metadata['techMetaA']['audio stream count']
@@ -102,7 +102,7 @@ for input in glob.glob1(indir, "*.mov"):
         ffmpeg_command.extend(('-colorspace', input_metadata['techMetaV']['color space']))
     if audioStreamCounter > 0:
         ffmpeg_command.extend(('-c:a', 'copy'))
-    ffmpeg_command.extend((tempMasterFile, '-f', 'framemd5', '-an', framemd5File))
+    ffmpeg_command.extend((tempMasterFile, '-f', 'framemd5', '-an', framemd5AbsPath))
     
     #log transcode start time
     tstime = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
@@ -110,12 +110,12 @@ for input in glob.glob1(indir, "*.mov"):
     subprocess.run(ffmpeg_command)
     
     #remux to attach framemd5
-    add_attachment = [ffmpegPath, '-loglevel', 'error', '-i', tempMasterFile, '-c', 'copy', '-map', '0', '-attach', framemd5File, '-metadata:s:t:0', 'mimetype=application/octet-stream', '-metadata:s:t:0', 'filename=' + framemd5File, outputAbsPath]    
+    add_attachment = [ffmpegPath, '-loglevel', 'error', '-i', tempMasterFile, '-c', 'copy', '-map', '0', '-attach', framemd5AbsPath, '-metadata:s:t:0', 'mimetype=application/octet-stream', '-metadata:s:t:0', 'filename=' + framemd5File, outputAbsPath]    
     if os.path.isfile(tempMasterFile):
         subprocess.call(add_attachment)
         #log transcode finish time
         tftime = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-        avfuncs.ffv1_lossless_transcode_cleanup(tempMasterFile, framemd5File)
+        avfuncs.ffv1_lossless_transcode_cleanup(tempMasterFile, framemd5AbsPath)
     else:
         print ("There was an issue finding the file", tempMasterFile)
     
@@ -123,7 +123,7 @@ for input in glob.glob1(indir, "*.mov"):
     if os.path.isfile(outputAbsPath):
         #create checksum sidecar file for preservation master
         print ("*creating checksum*")
-        mkvHash = avfuncs.hashlib_md5(outputAbsPath)
+        mkvHash = corefuncs.hashlib_md5(outputAbsPath)
         with open (os.path.join(pmOutputFolder, baseFilename + '-' + pm_identifier + '.md5'), 'w',  newline='\n') as f:
             print(mkvHash, '*' + mkvFilename, file=f)
         
@@ -131,6 +131,7 @@ for input in glob.glob1(indir, "*.mov"):
         print ("*verifying losslessness*")
         mov_stream_sum = avfuncs.checksum_streams(ffmpegPath, inputAbsPath, audioStreamCounter)
         mkv_stream_sum = avfuncs.checksum_streams(ffmpegPath, outputAbsPath, audioStreamCounter)
+        #TO DO: move into own function and return pass or fail
         if mkv_stream_sum == mov_stream_sum:
             print ('stream checksums match.  Your file is lossless')
             streamMD5status = "PASS"
@@ -138,8 +139,15 @@ for input in glob.glob1(indir, "*.mov"):
             print ('stream checksums do not match.  Output file may not be lossless')
             streamMD5status = "FAIL"
         
+        #***************************************************
+        #TO DO: Check output file in Mediaconch
+        #MKV_mediaconchResults = avfuncs.run_mediaconch(mediaconchPath, outputAbsPath, mkvPolicy)
+        #combine mediaconch results into a dictionary
+        #make function for comparing mediaconch results, return PASS if both == PASS
+        #if one fails, include a note which one in the results
+        
         #run ffprobe on the output file
-        output_metadata = avfuncs.ffprobe_report(ffprobePath, outputAbsPath)
+        output_metadata = avfuncs.ffprobe_report(ffprobePath, outputAbsPath, mkvFilename)
         #log system info
         systemInfo = avfuncs.generate_system_log(ffvers, tstime, tftime)      
         
@@ -148,15 +156,15 @@ for input in glob.glob1(indir, "*.mov"):
         avfuncs.write_output_csv(outdir, mkvFilename, output_metadata, qcResults)
         
         #create json metadata file
-        #TO DO: clean up how some of this information is passed around. Use dictionaries and nested dictionaries to reduce clutter with variables
-        avfuncs.create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, output_metadata, csvDict, qcResults)
+        #TO DO: combine checksums into a single dictionary to reduce variable needed here
+        avfuncs.create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, csvDict, qcResults)
         
         #create access copy
         print ('*transcoding access copy*')
         avfuncs.two_pass_h264_encoding(ffmpegPath, audioStreamCounter, mixdown, outputAbsPath, acAbsPath)
         
         #create checksum sidecar file for access copy
-        acHash = avfuncs.hashlib_md5(acAbsPath)
+        acHash = corefuncs.hashlib_md5(acAbsPath)
         with open (os.path.join(acOutputFolder, baseFilename + '-' + ac_identifier + '.md5'), 'w',  newline='\n') as f:
             print(acHash, '*' + baseFilename + '-' + ac_identifier + '.mp4', file=f)
         

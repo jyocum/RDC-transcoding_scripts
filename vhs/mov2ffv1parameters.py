@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+'''
+Argument parser for mov to ffv1 script
+'''
+
 import argparse
 import sys
 

@@ -15,6 +15,7 @@ def equipment_dict():
     '''
     dps_295 = {
     'Coding Algorithm' : 'A=ANALOG',
+    'Hardware Type' : 'TBC',
     'Output is one of' : ['Composite', 'S-Video', 'Component']
     }
 
@@ -22,14 +23,16 @@ def equipment_dict():
     ADCs
     '''
     hd10ava = {
-    'Coding Algorithm' : 'A=SDI'
+    'Coding Algorithm' : 'A=SDI',
+    'Hardware Type' : 'A/D'
     }
 
     '''
     Capture Cards
     '''
     kona1 = {
-    'Coding Algorithm' : 'A=v210'
+    'Coding Algorithm' : 'A=v210',
+    'Hardware Type' : 'DIO'
     }
         
     equipment_dict = {

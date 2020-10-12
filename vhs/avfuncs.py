@@ -2,38 +2,13 @@
 
 import os
 import sys
-import hashlib
 import subprocess
 import platform
 import json
 import csv
 import datetime
 import time
-
-def input_check(parameterDict):
-    if parameterDict.get('input_path'):
-        indir = parameterDict.get('input_path')
-    else:
-        print ("No input provided")
-        quit()
-
-    if not os.path.isdir(indir):
-        print('input is not a directory')
-        quit()
-    return indir
-
-def output_check(parameterDict):
-    if parameterDict.get('output_path'):
-        outdir = parameterDict.get('output_path')
-    #if output directory is not specified, input directory will be used
-    else:
-        print('Output not specified. Using input directory as Output directory')
-        outdir = parameterDict.get('input_path')
-    
-    if not os.path.isdir(outdir):
-        print('output is not a directory')
-        quit()
-    return (outdir)
+import equipment_dict
 
 def create_transcode_output_folders(baseOutput, outputFolderList):
     if not os.path.isdir(baseOutput):
@@ -69,36 +44,6 @@ def get_ffmpeg_version(ffmpegPath):
         print ("Error getting ffmpeg version")
         quit()
     return ffmpeg_version
-
-def qcli_check(qcliPath):
-    '''
-    checks that qcli exists by running its -version command
-    '''
-    try:
-        subprocess.check_output([qcliPath, '-version']).decode("ascii").rstrip().splitlines()[0]
-    except:
-        print('Error locating qcli')
-        quit()
-
-def mediaconch_check(mediaconchPath):
-    '''
-    checks that mediaconch exists by running its -v command
-    ''' 
-    try:
-        subprocess.check_output([mediaconchPath, '-v']).decode("ascii").rstrip().splitlines()[0]
-    except:
-        print('Error locating mediaconch')
-        quit()
-
-def ffprobe_check(ffprobePath):
-    '''
-    checks that ffprobe exists by running its -version command
-    '''
-    try:
-        subprocess.check_output([ffprobePath, '-version']).decode("ascii").rstrip().splitlines()[0].split()[2]
-    except:
-        print("Error locating ffprobe")
-        quit()
     
 def check_mixdown_arg(mixdown):
     mixdown_list = ['copy', '4to3', '4to2']
@@ -108,38 +53,7 @@ def check_mixdown_arg(mixdown):
         print ("please use one of: copy, swap, 4to3, 4to2")
         quit()  
 
-def mediaconch_policy_exists(policy_path):
-    if not os.path.isfile(policy_path):
-        print("unable to find mediaconch policy:", policy_path)
-        print("Check if file exists before running")
-        quit()
-
-def hashlib_md5(filename):
-    '''
-    Uses hashlib to return an MD5 checksum of an input filename
-    Credit: IFI scripts
-    '''
-    read_size = 0
-    last_percent_done = 0
-    chksm = hashlib.md5()
-    total_size = os.path.getsize(filename)
-    with open(filename, 'rb') as f:
-        while True:
-            #2**20 is for reading the file in 1 MiB chunks
-            buf = f.read(2**20)
-            if not buf:
-                break
-            read_size += len(buf)
-            chksm.update(buf)
-            percent_done = 100 * read_size / total_size
-            if percent_done > last_percent_done:
-                sys.stdout.write('[%d%%]\r' % percent_done)
-                sys.stdout.flush()
-                last_percent_done = percent_done
-    md5_output = chksm.hexdigest()
-    return md5_output
-
-def ffprobe_report(ffprobePath, input_file_abspath):
+def ffprobe_report(ffprobePath, input_file_abspath, filename):
     '''
     returns nested dictionary with ffprobe metadata
     '''
@@ -153,8 +67,8 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     tags = [streams.get('tags') for streams in (attachment_output['streams'])]
     attachment_list = []
     for i in tags:
-        filename = [i.get('filename')]
-        attachment_list.extend(filename)
+        attachmentFilename = [i.get('filename')]
+        attachment_list.extend(attachmentFilename)
     
     #parse ffprobe metadata lists
     video_codec_name_list = [stream.get('codec_name') for stream in (video_output['streams'])]
@@ -176,10 +90,11 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     audio_stream_count = len(audio_codec_name_list)
     
     file_metadata = {
-    'file size': format_output.get('format')['size'],
-    'duration': format_output.get('format')['duration'],
+    'filename' : filename,
+    'file size' : format_output.get('format')['size'],
+    'duration' : format_output.get('format')['duration'],
     'streams' : format_output.get('format')['nb_streams'],
-    'video streams': video_codec_name_list,
+    'video streams' : video_codec_name_list,
     'audio streams' : audio_codec_name_list,
     'data streams' : data_streams,
     'attachments' : attachment_list
@@ -188,7 +103,7 @@ def ffprobe_report(ffprobePath, input_file_abspath):
     techMetaV = {
     'width' : width,
     'height' : height,
-    'sample aspect ratio': sar,
+    'sample aspect ratio' : sar,
     'display aspect ratio' : dar,
     'pixel format' : pixel_format,
     'framerate' : framerate,
@@ -236,7 +151,6 @@ def checksum_streams(ffmpegPath, input, audioStreamCounter):
     return stream_sum
 
 def two_pass_h264_encoding(ffmpegPath, audioStreamCounter, mixdown, pmAbsPath, acAbsPath):
-    #add flag to exclude attachments
     if os.name == 'nt':
         nullOut = 'NUL'
     else:
@@ -308,7 +222,7 @@ def generate_system_log(ffvers, tstime, tftime):
 
 def qc_results(input_metadata, output_metadata, MOV_mediaconchResults, streamMD5status):
     QC_results = {}
-    QC_results['QC'] = []
+    #QC_results['QC'] = []
     if output_metadata.get('output_techMetaA') == input_metadata.get('input_techMetaA') and output_metadata.get('output_techMetaV') == output_metadata.get('input_techMetaV'):
         QC_techMeta = "PASS"
     else:
@@ -328,17 +242,52 @@ def guess_date(string):
         except ValueError:
             continue
     raise ValueError(string)
+
+def generate_coding_history(coding_history, hardware, append_list):
+    '''
+    Formats hardware into BWF style coding history. Takes a piece of hardware (formatted: 'model; serial No.'), splits it at ';' and then searches the equipment dictionary for that piece of hardware. Then iterates through a list of other fields to append in the free text section. If the hardware is not found in the equipment dictionary this will just pull the info from the csv file and leave out some of the BWF formatting.
+    '''
+    equipmentDict = equipment_dict.equipment_dict()
+    if hardware.split(';')[0] in equipmentDict.keys():
+        hardware_history = equipmentDict[hardware.split(';')[0]]['Coding Algorithm'] + ',' + 'T=' + hardware
+        for i in append_list:
+            if i:
+                hardware_history += '; '
+                hardware_history += i
+        if 'Hardware Type' in equipmentDict.get(hardware.split(';')[0]):
+            hardware_history += '; '
+            hardware_history += equipmentDict[hardware.split(';')[0]]['Hardware Type']
+        coding_history.append(hardware_history)
+    #handle case where equipment is not in the equipmentDict using a more general format
+    elif hardware and not hardware.split(';')[0] in equipmentDict.keys():
+        hardware_history = hardware
+        for i in append_list:
+            if i:
+                hardware_history += '; '
+                hardware_history += i
+        coding_history.append(hardware_history)
+    else:
+        pass
+    return coding_history
     
-def import_csv(csvInventory, equipment_dict):
+def import_csv(csvInventory):
     csvDict = {}
-    equipment_dict = equipment_dict.equipment_dict()
     try:
         with open(csvInventory)as f:
             reader = csv.DictReader(f, delimiter=',')
             for row in reader:
                 name = row['File name']
-                #date needs to be formatted as yyyy-mm-dd
+                id1 = row['Accession number/Call number']
+                id2 = row['ALMA number/Finding Aid']
+                title = row['Title']
+                record_date = row['Record Date/Time']
+                container_markings = row['Housing/Container/Cassette Markings']
+                container_markings = container_markings.split('\n')
+                description = row['Description']
+                condition_notes = row['Condition']
+                format = row['Format']
                 captureDate = row['Capture Date']
+                #try to format date as yyyy-mm-dd if not formatted correctly
                 captureDate = str(guess_date(captureDate))
                 digitizationOperator = row['Digitization Operator']
                 vtr = row['VTR']
@@ -347,55 +296,33 @@ def import_csv(csvInventory, equipment_dict):
                 recordMode = row['Tape Record Mode']
                 tbc = row['TBC']
                 tbcOut = row['TBC Output Used']
-                adc = row['Capture Device']
-                id1 = row['Accession number/Call number']
-                id2 = row['ALMA number/Finding Aid']
+                adc = row['ADC']
+                dio = row['Capture Card']
+                sound = row['Sound']
+                sound = sound.split('\n')
+                capture_notes = row['Capture notes']
                 coding_history = []
-                if vtr.split(';')[0] in equipment_dict.keys():
-                #TO DO: write coding history as a list here
-                    #TO DO: also grab SP tape and tape brand
-                    #TO DO: make adding vtrOut conditional so that the ; only appears if it is present
-                    vtr_history = equipment_dict[vtr.split(';')[0]]['Coding Algorithm'] + ',' + 'T=' + vtr
-                    for i in [vtrOut, tapeBrand, recordMode]:
-                        if i:
-                            vtr_history += '; '
-                            vtr_history += i
-                    coding_history.append(vtr_history)
-                #handle case where equipment is not in the equipment_dict using a more general format
-                elif vtr and not vtr.split(';')[0] in equipment_dict.keys():
-                    vtr_history = vtr
-                    for i in [vtrOut, tapeBrand, recordMode]:
-                        if i:
-                            vtr_history += '; '
-                            vtr_history += i
-                    coding_history.append(vtr_history)
-                else:
-                    pass                    
-                if tbc.split(';')[0] in equipment_dict.keys():
-                    tbc_history = equipment_dict[tbc.split(';')[0]]['Coding Algorithm'] + ',' + 'T=' + tbc
-                    for i in [tbcOut]:
-                        if i:
-                            tbc_history += '; '
-                            tbc_history += i
-                    coding_history.append(tbc_history)
-                #handle case where equipment is not in the equipment_dict using a more general format
-                elif tbc and not tbc.split(';')[0] in equipment_dict.keys():
-                    tbc_history = tbc
-                    for i in [tbcOut]:
-                        if i:
-                            tbc_history += '; '
-                            tbc_history += i
-                    coding_history.append(tbc_history)
-                else:
-                    pass
+                coding_history = generate_coding_history(coding_history, vtr, [tapeBrand, recordMode, vtrOut])
+                coding_history = generate_coding_history(coding_history, tbc, [tbcOut])
+                coding_history = generate_coding_history(coding_history, adc, [None])
+                coding_history = generate_coding_history(coding_history, dio, [None])
                 csvData = {
                 'Accession number/Call number' : id1,
                 'ALMA number/Finding Aid' : id2,
+                'Title' : title,
+                'Record Date' : record_date,
+                'Container Markings' : container_markings,
+                'Description' : description,
+                'Condition Notes' : condition_notes,
+                'Format' : format,
                 'Digitization Operator' : digitizationOperator,
                 'Capture Date' : captureDate,
-                'Coding History' : coding_history
+                'Coding History' : coding_history,
+                'Sound Note' : sound,
+                'Capture Notes' : capture_notes
                 }
                 csvDict.update({name : csvData})
+            #print(csvDict)
     except FileNotFoundError:
         print("Issue importing csv file")
     return csvDict
@@ -416,7 +343,6 @@ def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
     ]
     
     csvRuntime = time.strftime("%H:%M:%S", time.gmtime(float(output_metadata['file metadata']['duration'])))
-    #print ("runtime to print =", csvRuntime)
     qcDate = str(datetime.datetime.today().strftime('%Y-%m-%d'))
     csv_file = os.path.join(outdir, "qc_log.csv")
     csvOutFileExists = os.path.isfile(csv_file)
@@ -439,7 +365,7 @@ def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
         csvRuntime
         ])
 
-def create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, input, mkvFilename, baseFilename, output_metadata, csvDict, qcResults):
+def create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, csvDict, qcResults):
     input_techMetaV = input_metadata.get('techMetaV')
     input_techMetaA = input_metadata.get('techMetaA')
     input_file_metadata = input_metadata.get('file metadata')
@@ -454,38 +380,34 @@ def create_json(metaOutputFolder, metadata_identifier, systemInfo, outputAbsPath
     #gather pre and post transcode file metadata for json output
     mov_file_meta = {}
     ffv1_file_meta = {}
-    mov_file_meta[input] = []
-    ffv1_file_meta[mkvFilename] = []
     #add stream checksums to metadata
     mov_md5_dict = {'a/v streamMD5': mov_stream_sum}
     ffv1_md5_dict = {'md5 checksum': mkvHash, 'a/v streamMD5': mkv_stream_sum}
     input_file_metadata = {**input_file_metadata, **mov_md5_dict}
     output_file_metadata = {**output_file_metadata, **ffv1_md5_dict}
-    mov_file_meta[input].append(input_file_metadata)
-    ffv1_file_meta[mkvFilename].append(output_file_metadata)
+    ffv1_file_meta = {'post-transcode metadata' : output_file_metadata}
+    mov_file_meta = {'pre-transcode metadata' : input_file_metadata}
     
     #gather technical metadata for json output
     techdata = {}
     video_techdata = {}
     audio_techdata = {}
     techdata['technical metadata'] = []
-    video_techdata['video'] = []
-    audio_techdata['audio'] = []
-    video_techdata['video'].append(input_techMetaV)
-    audio_techdata['audio'].append(input_techMetaA)
+    video_techdata = {'video' : input_techMetaV}
+    audio_techdata = {'audio' : input_techMetaA}
     techdata['technical metadata'].append(video_techdata)
     techdata['technical metadata'].append(audio_techdata)
     
     #gather metadata from csv dictionary as capture metadata
-    capture_metadata = {}
-    capture_metadata['inventory metadata'] = []
-    capture_metadata['inventory metadata'].append(csvDict)
-
-    data[baseFilename].append(systemInfo)
+    csv_metadata = {'inventory metadata' : csvDict}
+    
+    system_info = {'system information' : systemInfo}
+    
+    data[baseFilename].append(csv_metadata)
+    data[baseFilename].append(system_info)
     data[baseFilename].append(ffv1_file_meta)
     data[baseFilename].append(mov_file_meta)        
     data[baseFilename].append(techdata)
-    data[baseFilename].append(capture_metadata)
     data[baseFilename].append(qcResults)
-    with open(os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json'), 'w', newline='\n') as outfile:
+    with open(jsonOutputFile, 'w', newline='\n') as outfile:
         json.dump(data, outfile, indent=4)
