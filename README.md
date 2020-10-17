@@ -1,2 +1,2 @@
 # transcoding-scripts
-Scripts for automatically transcoding files
+Scripts for batch transcoding files
