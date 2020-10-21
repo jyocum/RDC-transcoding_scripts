@@ -51,6 +51,8 @@ csvInventory = os.path.join(indir, inventoryName)
 #TO DO: separate out csv and json related functions that are currently in avfuncs into dedicated csv or json related py files
 csvDict = avfuncs.import_csv(csvInventory)
 
+print ("***STARTING PROCESS***")
+
 for movFilename in glob.glob1(indir, "*.mov"):
     inputAbsPath = os.path.join(indir, movFilename)
     baseFilename = movFilename.replace('.mov','')
@@ -78,17 +80,15 @@ for movFilename in glob.glob1(indir, "*.mov"):
         item_csvDict = {}
     
     #generate ffprobe metadata from input
-    input_metadata = avfuncs.ffprobe_report(ffprobePath, inputAbsPath, movFilename)
-    
-    #check input file in Mediaconch    
-    MOV_mediaconchResults = avfuncs.run_mediaconch(mediaconchPath, inputAbsPath, movPolicy)    
+    input_metadata = avfuncs.ffprobe_report(ffprobePath, inputAbsPath, movFilename)  
     
     #create a list of needed output folders and make them
     outFolders = [pmOutputFolder, acOutputFolder, metaOutputFolder]
     avfuncs.create_transcode_output_folders(baseOutput, outFolders)
-
-    #build ffmpeg command
+    
+    print ("\n")
     print ("**losslessly transcoding", baseFilename + "**")
+    #build ffmpeg command
     audioStreamCounter = input_metadata['techMetaA']['audio stream count']
     ffmpeg_command = [ffmpegPath]
     if not parameterDict.get('verbose'):
@@ -140,24 +140,13 @@ for movFilename in glob.glob1(indir, "*.mov"):
             print ('stream checksums do not match.  Output file may not be lossless')
             streamMD5status = "FAIL"
         
-        #Check output file in Mediaconch
-        MKV_mediaconchResults = avfuncs.run_mediaconch(mediaconchPath, outputAbsPath, mkvPolicy)
-        
-        #combine mediaconch results into a dictionary
+        #create a dictionary with the mediaconch results from the MOV and MKV files
         mediaconchResults_dict = {
-        'MOV Mediaconch Policy': MOV_mediaconchResults,
-        'MKV Mediaconch Policy': MKV_mediaconchResults,
+        'MOV Mediaconch Policy': avfuncs.run_mediaconch(mediaconchPath, inputAbsPath, movPolicy),
+        'MKV Mediaconch Policy': avfuncs.run_mediaconch(mediaconchPath, outputAbsPath, mkvPolicy),
         }
         #check if any mediaconch results failed and append failed policies to results
-        if "FAIL" in mediaconchResults_dict.values():
-            mediaconchResults = "FAIL"
-            failed_policies = []
-            for key in mediaconchResults_dict.keys():
-                if "FAIL" in mediaconchResults_dict.get(key):
-                    failed_policies.append(key)
-            mediaconchResults = mediaconchResults + ': ' + str(failed_policies).strip('[]')
-        else:
-            mediaconchResults = "PASS"
+        mediaconchResults = avfuncs.parse_mediaconchResults(mediaconchResults_dict)
         
         #run ffprobe on the output file
         output_metadata = avfuncs.ffprobe_report(ffprobePath, outputAbsPath, mkvFilename)

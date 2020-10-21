@@ -208,6 +208,18 @@ def run_mediaconch(mediaconchPath, input, policy):
         mediaconchResults = "FAIL"
     return mediaconchResults
 
+def parse_mediaconchResults(mediaconchResults_dict):
+    if "FAIL" in mediaconchResults_dict.values():
+        mediaconchResults = "FAIL"
+        failed_policies = []
+        for key in mediaconchResults_dict.keys():
+            if "FAIL" in mediaconchResults_dict.get(key):
+                failed_policies.append(key)
+        mediaconchResults = mediaconchResults + ': ' + str(failed_policies).strip('[]')
+    else:
+        mediaconchResults = "PASS"
+    return mediaconchResults
+
 def generate_system_log(ffvers, tstime, tftime):
     #gather system info for json output
     osinfo = platform.platform()
