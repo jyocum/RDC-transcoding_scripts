@@ -21,7 +21,7 @@ pm_identifier = 'pm'
 ac_identifier = 'ac'
 inventoryName = 'transcode_inventory.csv'
 mov_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MOV.xml'
-mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-FFV1.xml'
+mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MKV.xml'
 metadata_identifier = 'meta'
 ffv1_slice_count = '16'
 ffmpegPath = parameterDict.get('ffmpeg_path')
@@ -44,8 +44,8 @@ ffvers = avfuncs.get_ffmpeg_version(ffmpegPath)
 #verify that mediaconch policies are present
 movPolicy = os.path.join(os.path.dirname(__file__), 'mediaconch_policies', mov_mediaconch_policy)
 corefuncs.mediaconch_policy_exists(movPolicy)
-#mkvPolicy = os.path.join(os.path.dirname(__file__), 'mediaconch_policies', mkv_mediaconch_policy)
-#corefuncs.mediaconch_policy_exists(mkvPolicy)
+mkvPolicy = os.path.join(os.path.dirname(__file__), 'mediaconch_policies', mkv_mediaconch_policy)
+corefuncs.mediaconch_policy_exists(mkvPolicy)
 
 csvInventory = os.path.join(indir, inventoryName)
 #TO DO: separate out csv and json related functions that are currently in avfuncs into dedicated csv or json related py files
@@ -72,10 +72,10 @@ for movFilename in glob.glob1(indir, "*.mov"):
     
     #get information about item from csv inventory
     try:
-        csvDict = csvDict.get(baseFilename)
+        item_csvDict = csvDict.get(baseFilename)
     except:
         print("unable to locate", baseFilename, "in csv data.")
-        csvDict = {}
+        item_csvDict = {}
     
     #generate ffprobe metadata from input
     input_metadata = avfuncs.ffprobe_report(ffprobePath, inputAbsPath, movFilename)
@@ -94,6 +94,7 @@ for movFilename in glob.glob1(indir, "*.mov"):
     if not parameterDict.get('verbose'):
         ffmpeg_command.extend(('-loglevel', 'error'))
     ffmpeg_command.extend(['-i', inputAbsPath, '-map', '0', '-dn', '-c:v', 'ffv1', '-level', '3', '-g', '1', '-slices', ffv1_slice_count, '-slicecrc', '1'])
+    #TO DO: consider putting color data in a list or dict to replace the following if statements with a single if statement in a for loop
     if input_metadata['techMetaV']['color primaries']:
         ffmpeg_command.extend(('-color_primaries', input_metadata['techMetaV']['color primaries']))
     if input_metadata['techMetaV']['color transfer']:
@@ -139,25 +140,37 @@ for movFilename in glob.glob1(indir, "*.mov"):
             print ('stream checksums do not match.  Output file may not be lossless')
             streamMD5status = "FAIL"
         
-        #***************************************************
-        #TO DO: Check output file in Mediaconch
-        #MKV_mediaconchResults = avfuncs.run_mediaconch(mediaconchPath, outputAbsPath, mkvPolicy)
+        #Check output file in Mediaconch
+        MKV_mediaconchResults = avfuncs.run_mediaconch(mediaconchPath, outputAbsPath, mkvPolicy)
+        
         #combine mediaconch results into a dictionary
-        #make function for comparing mediaconch results, return PASS if both == PASS
-        #if one fails, include a note which one in the results
+        mediaconchResults_dict = {
+        'MOV Mediaconch Policy': MOV_mediaconchResults,
+        'MKV Mediaconch Policy': MKV_mediaconchResults,
+        }
+        #check if any mediaconch results failed and append failed policies to results
+        if "FAIL" in mediaconchResults_dict.values():
+            mediaconchResults = "FAIL"
+            failed_policies = []
+            for key in mediaconchResults_dict.keys():
+                if "FAIL" in mediaconchResults_dict.get(key):
+                    failed_policies.append(key)
+            mediaconchResults = mediaconchResults + ': ' + str(failed_policies).strip('[]')
+        else:
+            mediaconchResults = "PASS"
         
         #run ffprobe on the output file
         output_metadata = avfuncs.ffprobe_report(ffprobePath, outputAbsPath, mkvFilename)
         #log system info
         systemInfo = avfuncs.generate_system_log(ffvers, tstime, tftime)      
         
-        qcResults = avfuncs.qc_results(input_metadata, output_metadata, MOV_mediaconchResults, streamMD5status)
+        qcResults = avfuncs.qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status)
         
         avfuncs.write_output_csv(outdir, mkvFilename, output_metadata, qcResults)
         
         #create json metadata file
         #TO DO: combine checksums into a single dictionary to reduce variable needed here
-        avfuncs.create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, csvDict, qcResults)
+        avfuncs.create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, item_csvDict, qcResults)
         
         #create access copy
         print ('*transcoding access copy*')

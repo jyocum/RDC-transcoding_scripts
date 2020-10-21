@@ -220,9 +220,8 @@ def generate_system_log(ffvers, tstime, tftime):
     }
     return systemInfo
 
-def qc_results(input_metadata, output_metadata, MOV_mediaconchResults, streamMD5status):
+def qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status):
     QC_results = {}
-    #QC_results['QC'] = []
     if output_metadata.get('output_techMetaA') == input_metadata.get('input_techMetaA') and output_metadata.get('output_techMetaV') == output_metadata.get('input_techMetaV'):
         QC_techMeta = "PASS"
     else:
@@ -230,7 +229,7 @@ def qc_results(input_metadata, output_metadata, MOV_mediaconchResults, streamMD5
         QC_techMeta = "FAIL"
     QC_results['QC'] = {
     'Pre/Post Transcode Technical Metadata': QC_techMeta,
-    'MOV Mediaconch Policy': MOV_mediaconchResults,
+    'Mediaconch Results': mediaconchResults,
     'Stream Checksums': streamMD5status
     }
     return QC_results
@@ -356,7 +355,7 @@ def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
         None,
         qcResults['QC']['Pre/Post Transcode Technical Metadata'],
         qcDate,
-        qcResults['QC']['MOV Mediaconch Policy'],
+        qcResults['QC']['Mediaconch Results'],
         qcDate,
         None,
         None,
@@ -365,7 +364,7 @@ def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
         csvRuntime
         ])
 
-def create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, csvDict, qcResults):
+def create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, item_csvDict, qcResults):
     input_techMetaV = input_metadata.get('techMetaV')
     input_techMetaA = input_metadata.get('techMetaA')
     input_file_metadata = input_metadata.get('file metadata')
@@ -399,7 +398,7 @@ def create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvH
     techdata['technical metadata'].append(audio_techdata)
     
     #gather metadata from csv dictionary as capture metadata
-    csv_metadata = {'inventory metadata' : csvDict}
+    csv_metadata = {'inventory metadata' : item_csvDict}
     
     system_info = {'system information' : systemInfo}
     
