@@ -72,13 +72,6 @@ for movFilename in glob.glob1(indir, "*.mov"):
     #transcode finish time
     tftime = 'Pending'    
     
-    #get information about item from csv inventory
-    try:
-        item_csvDict = csvDict.get(baseFilename)
-    except:
-        print("unable to locate", baseFilename, "in csv data.")
-        item_csvDict = {}
-    
     #generate ffprobe metadata from input
     input_metadata = avfuncs.ffprobe_report(ffprobePath, inputAbsPath, movFilename)  
     
@@ -87,8 +80,18 @@ for movFilename in glob.glob1(indir, "*.mov"):
     avfuncs.create_transcode_output_folders(baseOutput, outFolders)
     
     print ("\n")
-    print ("**losslessly transcoding", baseFilename + "**")
+    #get information about item from csv inventory
+    print("*checking inventory for", baseFilename + "*")
+    item_csvDict = csvDict.get(baseFilename)
+    if item_csvDict is None:
+        print("unable to locate", baseFilename, "in csv data!")
+        inventoryCheck = "FAIL"
+    else:
+        print("item found in inventory")
+        inventoryCheck = "PASS"
+    
     #build ffmpeg command
+    print ("*losslessly transcoding", baseFilename + "*")
     audioStreamCounter = input_metadata['techMetaA']['audio stream count']
     ffmpeg_command = [ffmpegPath]
     if not parameterDict.get('verbose'):
@@ -153,9 +156,8 @@ for movFilename in glob.glob1(indir, "*.mov"):
         #log system info
         systemInfo = avfuncs.generate_system_log(ffvers, tstime, tftime)      
         
-        qcResults = avfuncs.qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status)
-        
-        avfuncs.write_output_csv(outdir, mkvFilename, output_metadata, qcResults)
+        #create a dictionary containing QC results
+        qcResults = avfuncs.qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status, inventoryCheck)
         
         #create json metadata file
         #TO DO: combine checksums into a single dictionary to reduce variable needed here
@@ -169,6 +171,16 @@ for movFilename in glob.glob1(indir, "*.mov"):
         acHash = corefuncs.hashlib_md5(acAbsPath)
         with open (os.path.join(acOutputFolder, baseFilename + '-' + ac_identifier + '.md5'), 'w',  newline='\n') as f:
             print(acHash, '*' + baseFilename + '-' + ac_identifier + '.mp4', file=f)
+        
+        #log access copy filename if access copy was created
+        #TO DO: verify that access copy runtime matches pm runtime?
+        if os.path.isfile(acAbsPath):
+            acFilename = baseFilename + '-' + ac_identifier + '.mp4'
+        else:
+            acFilename = "Access Copy not found"
+        
+        #Add QC results to QC log csv file
+        avfuncs.write_output_csv(outdir, mkvFilename, acFilename, output_metadata, qcResults)
         
         #create spectrogram for pm audio channels
         if audioStreamCounter > 0:
@@ -189,5 +201,4 @@ for movFilename in glob.glob1(indir, "*.mov"):
 #timeOut = [get csv time2]
 #t1 = datetime.datetime.strptime(timeIn, "%H:%M:%S")
 #t2 = datetime.datetime.strptime(timeOut, "%H:%M:%S")
-#may have to make it a string?
 #trimtime = time.strftime('%H:%M:%S', time.gmtime(((60 * ((60 * t2.hour) + t2.minute)) + t2.second) - ((60 * ((60 * t1.hour) + t1.minute)) + t1.second)))

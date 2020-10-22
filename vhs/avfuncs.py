@@ -232,7 +232,7 @@ def generate_system_log(ffvers, tstime, tftime):
     }
     return systemInfo
 
-def qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status):
+def qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status, inventoryCheck):
     QC_results = {}
     if output_metadata.get('output_techMetaA') == input_metadata.get('input_techMetaA') and output_metadata.get('output_techMetaV') == output_metadata.get('input_techMetaV'):
         QC_techMeta = "PASS"
@@ -240,6 +240,7 @@ def qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5stat
         print("input and output technical metadata do not match")
         QC_techMeta = "FAIL"
     QC_results['QC'] = {
+    'Inventory Check': inventoryCheck,
     'Pre/Post Transcode Technical Metadata': QC_techMeta,
     'Mediaconch Results': mediaconchResults,
     'Stream Checksums': streamMD5status
@@ -338,7 +339,7 @@ def import_csv(csvInventory):
         print("Issue importing csv file")
     return csvDict
 
-def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
+def write_output_csv(outdir, mkvFilename, acFilename, output_metadata, qcResults):
     header = [
     "Shot Sheet Check",
     "Date",
@@ -349,6 +350,7 @@ def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
     "File Inspection",
     "Date",
     "QC Notes",
+    "AC Filename",
     "PM Filename",
     "Runtime"
     ]
@@ -363,8 +365,8 @@ def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
         if not csvOutFileExists:
             writer.writerow(header)
         writer.writerow([
-        None,
-        None,
+        qcResults['QC']['Inventory Check'],
+        qcDate,
         qcResults['QC']['Pre/Post Transcode Technical Metadata'],
         qcDate,
         qcResults['QC']['Mediaconch Results'],
@@ -372,6 +374,7 @@ def write_output_csv(outdir, mkvFilename, output_metadata, qcResults):
         None,
         None,
         None,
+        acFilename,
         mkvFilename,
         csvRuntime
         ])
