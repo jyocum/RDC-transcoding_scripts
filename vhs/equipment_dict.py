@@ -19,6 +19,12 @@ def equipment_dict():
     'Output is one of' : ['Composite', 'S-Video', 'Component']
     }
 
+    fa_510 = {
+    'Coding Algorithm' : 'A=ANALOG',
+    'Hardware Type' : 'TBC',
+    'Output is one of' : ['Composite', 'S-Video', 'Component']
+    }
+
     '''
     ADCs
     '''
@@ -38,6 +44,7 @@ def equipment_dict():
     equipment_dict = {
     'Panasonic AG-1980P' : panasonic_ag1980, 
     'DPS-295' : dps_295,
+    'FA-510' : fa_510,
     'HD10AVA' : hd10ava,
     'Kona-1-T-R0' : kona1
     }
