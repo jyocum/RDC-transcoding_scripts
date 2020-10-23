@@ -20,4 +20,4 @@ Scripts for batch transcoding files<br/>
 -Place the transcode_inventory.csv file in the input folder with the video files and add any associated inventory information. Doing so allows the script to pull the inventory metadata and use it for some of the QC steps. The csv file also supplies additional metadata for the sidecar json file that will be produced.<br/>
 
 **Example:**
-	aja_mov_2_ffv1.py -i input_folder -o output_folder --mixdown 4to3
+	`aja_mov_2_ffv1.py -i input_folder -o output_folder --mixdown 4to3`
