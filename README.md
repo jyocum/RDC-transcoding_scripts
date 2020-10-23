@@ -5,7 +5,7 @@ Scripts for batch transcoding files<br/>
 ### Flags
 **--input**, **-i** INPUT_PATH      full path to input folder<br/>
 **--output**, **-o** OUTPUT_PATH     full path to output folder. If left blank, this will default to the same folder as the input.<br/>
-**--mixdown** MIXDOWN     Sets how audio streams will be mapped when transcoding the access copy. Inputs include: copy, 4to3, and 4to2. Defaults to copy. 4to3 mixes streams 1&2 to a single stereo stream and copies streams 3 and 4. 4to2 mixes streams 1&2 and 3&4 to two stereo streams.<br/>
+**--mixdown** MIXDOWN     Sets how audio streams will be mapped when transcoding the access copy. Inputs include: `copy`, `4to3`, and `4to2`. Defaults to copy. 4to3 mixes streams 1&2 to a single stereo stream and copies streams 3 and 4. 4to2 mixes streams 1&2 and 3&4 to two stereo streams.<br/>
 **--verbose** VERBOSE     view ffmpeg output when transcoding<br/>
 
 ### Flags for custom tool paths
