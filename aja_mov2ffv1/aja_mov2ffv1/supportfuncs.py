@@ -8,7 +8,7 @@ import json
 import csv
 import datetime
 import time
-import equipment_dict
+from aja_mov2ffv1 import equipment_dict
 
 def create_transcode_output_folders(baseOutput, outputFolderList):
     if not os.path.isdir(baseOutput):

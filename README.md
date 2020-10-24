@@ -9,11 +9,20 @@ Scripts for batch transcoding files<br/>
 **--verbose** VERBOSE     view ffmpeg output when transcoding<br/>
 
 ### Flags for custom tool paths
-#### Only include if trying to use a version of the tool other than the system version or if the tool is not installed in the current path.
+#### Only include if trying to use a version of the listed tool other than the system version or if the tool is not installed in the current path.
 **--ffmpeg** FFMPEG_PATH<br/>
 **--ffprobe** FFPROBE_PATH<br/>
 **--qcli** QCLI_PATH<br/>
 **--mediaconch** MEDIACONCH_PATH<br/>
+
+### Installation
+If you want to use the script without installing, you can use the run.py file located in the aja_mov2ffv1 folder. In a command line window either drag and drop the file into the window or navigate to the aja_mov2ffv1 folder and then type `run.py` followed by any needed variables.<br/>
+**In order to install the script:**<br/>
+-First, make sure that you have Python 3 or higher installed<br/>
+-Download the folder for this repository<br/>
+-`cd` to the folder RDC-transcoding_scripts<br/>
+-Run `pip install aja_mov2ffv1`<br/>
+-You should now be able to run the mov transcoding script using the command `aja-mov2ffv1`<br/>
 
 ### Usage
 -The input should be a folder containing v210/MOV files that you want to losslessly transcode to FFV1/MKV.<br/>
@@ -22,4 +31,4 @@ Scripts for batch transcoding files<br/>
 -In order for the script to match a v210/MOV file with its associated inventory row the v210/MOV file minus the ".mov" extension **MUST** be identical to the name entered in the "File name" column in the inventory.<br/>
 
 **Example command:**
-	`aja_mov_2_ffv1.py -i input_folder -o output_folder --mixdown 4to3`
+	`aja-mov2ffv1 -i input_folder -o output_folder --mixdown 4to3`

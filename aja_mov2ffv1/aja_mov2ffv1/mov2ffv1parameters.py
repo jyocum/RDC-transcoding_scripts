@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 
 '''
-Argument parser for mov to ffv1 script
+Argument parser for in-house AJA v210/mov to ffv1/mkv script
 '''
 
 import argparse
 import sys
-
-if sys.version_info[0] < 3:
-    raise Exception("Python 3 or a more recent version is required.")
 
 parser = argparse.ArgumentParser()
 
