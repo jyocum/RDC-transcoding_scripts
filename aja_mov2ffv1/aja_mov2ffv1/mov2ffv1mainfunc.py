@@ -37,7 +37,7 @@ def aja_mov2ffv1_main():
     corefuncs.qcli_check(qcliPath)
     corefuncs.mediaconch_check(mediaconchPath)
     corefuncs.ffprobe_check(ffprobePath)
-    ffvers = supportfuncs.get_ffmpeg_version(ffmpegPath)
+    ffvers = corefuncs.get_ffmpeg_version(ffmpegPath)
 
     #verify that mediaconch policies are present
     movPolicy = os.path.join(os.path.dirname(__file__), 'data/mediaconch_policies', mov_mediaconch_policy)
@@ -48,6 +48,22 @@ def aja_mov2ffv1_main():
     csvInventory = os.path.join(indir, inventoryName)
     #TO DO: separate out csv and json related functions that are currently in supportfuncs into dedicated csv or json related py files
     csvDict = supportfuncs.import_csv(csvInventory)
+    
+    #create the list of csv headers that will go in the qc log csv file
+    csvHeaderList = [
+    "Shot Sheet Check",
+    "Date",
+    "PM Lossless Transcoding",
+    "Date",
+    "File Format & Metadata Verification",
+    "Date",
+    "File Inspection",
+    "Date",
+    "QC Notes",
+    "AC Filename",
+    "PM Filename",
+    "Runtime"
+    ]
 
     print ("***STARTING PROCESS***")
 
@@ -103,7 +119,7 @@ def aja_mov2ffv1_main():
         if input_metadata['techMetaV']['color space']:
             ffmpeg_command.extend(('-colorspace', input_metadata['techMetaV']['color space']))
         if audioStreamCounter > 0:
-            ffmpeg_command.extend(('-c:a', 'copy'))
+            ffmpeg_command.extend(('-c:a', 'flac', '-compression_level', '12'))
         ffmpeg_command.extend((tempMasterFile, '-f', 'framemd5', '-an', framemd5AbsPath))
         
         #log transcode start time
@@ -158,7 +174,7 @@ def aja_mov2ffv1_main():
             qcResults = supportfuncs.qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status, inventoryCheck)
             
             #create json metadata file
-            #TO DO: combine checksums into a single dictionary to reduce variable needed here
+            #TO DO: combine checksums into a single dictionary to reduce variables needed here
             supportfuncs.create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, item_csvDict, qcResults)
             
             #create access copy
@@ -176,9 +192,29 @@ def aja_mov2ffv1_main():
                 acFilename = baseFilename + '-' + ac_identifier + '.mp4'
             else:
                 acFilename = "Access Copy not found"
+
+            #get current date for logging when QC happned
+            qcDate = str(datetime.datetime.today().strftime('%Y-%m-%d'))
+            
+            #create the list that will go in the qc log csv file
+            #should correspond to the csvHeaderList earlier in the script
+            csvWriteList = [
+            qcResults['QC']['Inventory Check'],
+            qcDate,
+            qcResults['QC']['Lossless Check'],
+            qcDate,
+            qcResults['QC']['Mediaconch Results'],
+            qcDate,
+            None,
+            None,
+            None,
+            acFilename,
+            mkvFilename,
+            supportfuncs.convert_runtime(output_metadata['file metadata']['duration'])
+            ]
             
             #Add QC results to QC log csv file
-            supportfuncs.write_output_csv(outdir, mkvFilename, acFilename, output_metadata, qcResults)
+            supportfuncs.write_output_csv(outdir, csvHeaderList, csvWriteList, output_metadata, qcResults)
             
             #create spectrogram for pm audio channels
             if audioStreamCounter > 0:

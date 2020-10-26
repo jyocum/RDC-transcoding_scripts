@@ -30,20 +30,6 @@ def create_transcode_output_folders(baseOutput, outputFolderList):
                 quit()
         else:
             print ("using existing folder", folder, "as output")
-
-def get_ffmpeg_version(ffmpegPath):
-    '''
-    Returns the version of ffmpeg
-    '''
-    ffmpeg_version = 'ffmpeg'
-    try:
-        ffmpeg_version = subprocess.check_output([
-            ffmpegPath, '-version'
-        ]).decode("ascii").rstrip().splitlines()[0].split()[2]
-    except:
-        print ("Error getting ffmpeg version")
-        quit()
-    return ffmpeg_version
     
 def check_mixdown_arg(mixdown):
     mixdown_list = ['copy', '4to3', '4to2']
@@ -142,15 +128,26 @@ def checksum_streams(ffmpegPath, input, audioStreamCounter):
     Gets the stream md5 of a file
     Uses both video and all audio streams if audio is present
     '''
-    stream_sum_command = [ffmpegPath, '-loglevel', 'error', '-i', input, '-map', '0:v']
+    stream_sum=[]
+    stream_sum_command = [ffmpegPath, '-loglevel', 'error', '-i', input, '-map', '0:v', '-an']
+    '''
     if audioStreamCounter > 0:
-        stream_sum_command.extend(('-map', '0:a'))
+        stream_sum_command.extend(('-map', '-0:a'))
+    '''
     stream_sum_command.extend(('-f', 'md5', '-'))
-    stream_sum = subprocess.check_output(stream_sum_command).decode("ascii").rstrip()
-    stream_sum = stream_sum.replace('MD5=', '')
+    video_stream_sum = subprocess.check_output(stream_sum_command).decode("ascii").rstrip()
+    stream_sum.append(video_stream_sum.replace('MD5=', ''))
+    for i in range(audioStreamCounter):
+        audio_sum_command = [ffmpegPath]
+        audio_sum_command += ['-loglevel', 'error', '-y', '-i', input]
+        audio_sum_command += ['-vn', '-map', '0:a:%(a)s' % {"a" : i}]
+        audio_sum_command += ['-c:a', 'pcm_s24le', '-f', 'md5', '-']
+        audio_stream_sum = subprocess.check_output(audio_sum_command).decode("ascii").rstrip()
+        stream_sum.append(audio_stream_sum.replace('MD5=', ''))
     return stream_sum
 
 def two_pass_h264_encoding(ffmpegPath, audioStreamCounter, mixdown, pmAbsPath, acAbsPath):
+    #TO DO: make --verbose also apply to this ffmpeg command if included
     if os.name == 'nt':
         nullOut = 'NUL'
     else:
@@ -233,17 +230,29 @@ def generate_system_log(ffvers, tstime, tftime):
     return systemInfo
 
 def qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status, inventoryCheck):
+    #TO DO: make this more portable to reduce the need to modify for different workflow QC checks. Start by breaking out PASS/FAIL tests into own functions
     QC_results = {}
     if output_metadata.get('output_techMetaA') == input_metadata.get('input_techMetaA') and output_metadata.get('output_techMetaV') == output_metadata.get('input_techMetaV'):
         QC_techMeta = "PASS"
     else:
         print("input and output technical metadata do not match")
         QC_techMeta = "FAIL"
+        
+    losslessCheckDict = {'technical metadata' : QC_techMeta, 'stream checksums' : streamMD5status}
+    if "FAIL" in losslessCheckDict.values():
+        losslessCheck = "FAIL"
+        losslessFail = []
+        for key in losslessCheckDict.keys():
+            if "FAIL" in losslessCheckDict.get(key):
+                losslessFail.append(key)
+        losslessCheck = losslessCheck + ': ' + str(losslessFail).strip('[]')
+    else:
+        losslessCheck = "PASS"
+    
     QC_results['QC'] = {
     'Inventory Check': inventoryCheck,
-    'Pre/Post Transcode Technical Metadata': QC_techMeta,
+    'Lossless Check': losslessCheck,
     'Mediaconch Results': mediaconchResults,
-    'Stream Checksums': streamMD5status
     }
     return QC_results
 
@@ -339,45 +348,19 @@ def import_csv(csvInventory):
         print("Issue importing csv file")
     return csvDict
 
-def write_output_csv(outdir, mkvFilename, acFilename, output_metadata, qcResults):
-    header = [
-    "Shot Sheet Check",
-    "Date",
-    "PM Lossless Transcoding",
-    "Date",
-    "File Format & Metadata Verification",
-    "Date",
-    "File Inspection",
-    "Date",
-    "QC Notes",
-    "AC Filename",
-    "PM Filename",
-    "Runtime"
-    ]
-    
-    csvRuntime = time.strftime("%H:%M:%S", time.gmtime(float(output_metadata['file metadata']['duration'])))
-    qcDate = str(datetime.datetime.today().strftime('%Y-%m-%d'))
+def convert_runtime(duration):
+    runtime = time.strftime("%H:%M:%S", time.gmtime(float(duration)))
+    return runtime
+
+def write_output_csv(outdir, csvHeaderList, csvWriteList, output_metadata, qcResults):
     csv_file = os.path.join(outdir, "qc_log.csv")
     csvOutFileExists = os.path.isfile(csv_file)
-    
+
     with open(csv_file, 'a') as f:
         writer = csv.writer(f, delimiter=',', lineterminator='\n')
         if not csvOutFileExists:
-            writer.writerow(header)
-        writer.writerow([
-        qcResults['QC']['Inventory Check'],
-        qcDate,
-        qcResults['QC']['Pre/Post Transcode Technical Metadata'],
-        qcDate,
-        qcResults['QC']['Mediaconch Results'],
-        qcDate,
-        None,
-        None,
-        None,
-        acFilename,
-        mkvFilename,
-        csvRuntime
-        ])
+            writer.writerow(csvHeaderList)
+        writer.writerow(csvWriteList)
 
 def create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, item_csvDict, qcResults):
     input_techMetaV = input_metadata.get('techMetaV')

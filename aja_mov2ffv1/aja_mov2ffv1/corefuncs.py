@@ -111,3 +111,17 @@ def qcli_check(qcliPath):
     except:
         print('Error locating qcli')
         quit()
+
+def get_ffmpeg_version(ffmpegPath):
+    '''
+    Returns the version of ffmpeg
+    '''
+    ffmpeg_version = 'ffmpeg'
+    try:
+        ffmpeg_version = subprocess.check_output([
+            ffmpegPath, '-version'
+        ]).decode("ascii").rstrip().splitlines()[0].split()[2]
+    except:
+        print ("Error getting ffmpeg version")
+        quit()
+    return ffmpeg_version
