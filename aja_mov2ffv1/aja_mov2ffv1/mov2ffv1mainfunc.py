@@ -7,37 +7,33 @@ import glob
 import subprocess
 import datetime
 from aja_mov2ffv1.mov2ffv1parameters import args
-from aja_mov2ffv1 import supportfuncs
+from aja_mov2ffv1 import mov2ffv1supportfuncs
 from aja_mov2ffv1 import corefuncs
+from aja_mov2ffv1 import mov2ffv1passfail_checks
 
 #TO DO: general cleanup
 
 def aja_mov2ffv1_main():
-    parameterDict = vars(args)
-
+    #parameterDict = vars(args)
     pm_identifier = 'pm'
     ac_identifier = 'ac'
+    metadata_identifier = 'meta'
+    #pm_filename_identifier = '-pm'
     inventoryName = 'transcode_inventory.csv'
     mov_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MOV.xml'
-    mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MKV.xml'
-    metadata_identifier = 'meta'
-    ffv1_slice_count = '16'
-    ffmpegPath = parameterDict.get('ffmpeg_path')
-    ffprobePath = parameterDict.get('ffprobe_path')
-    qcliPath = parameterDict.get('qcli_path')
-    mediaconchPath = parameterDict.get('mediaconch_path')
-    mixdown = parameterDict.get('mixdown')
-            
+    mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MKV-FLAC.xml'
+    
     #assign input directory and output directory
-    indir = corefuncs.input_check(parameterDict)
-    outdir = corefuncs.output_check(parameterDict)
+    indir = corefuncs.input_check()
+    outdir = corefuncs.output_check()
     #check that mixdown argument is valid if provided
-    supportfuncs.check_mixdown_arg(mixdown)
+    mov2ffv1supportfuncs.check_mixdown_arg()
     #check that required programs are present
-    corefuncs.qcli_check(qcliPath)
-    corefuncs.mediaconch_check(mediaconchPath)
-    corefuncs.ffprobe_check(ffprobePath)
-    ffvers = corefuncs.get_ffmpeg_version(ffmpegPath)
+    if not args.skip_qcli:
+        corefuncs.qcli_check()
+    corefuncs.mediaconch_check()
+    corefuncs.ffprobe_check()
+    ffvers = corefuncs.get_ffmpeg_version()
 
     #verify that mediaconch policies are present
     movPolicy = os.path.join(os.path.dirname(__file__), 'data/mediaconch_policies', mov_mediaconch_policy)
@@ -47,7 +43,7 @@ def aja_mov2ffv1_main():
 
     csvInventory = os.path.join(indir, inventoryName)
     #TO DO: separate out csv and json related functions that are currently in supportfuncs into dedicated csv or json related py files
-    csvDict = supportfuncs.import_csv(csvInventory)
+    csvDict = mov2ffv1supportfuncs.import_csv(csvInventory)
     
     #create the list of csv headers that will go in the qc log csv file
     csvHeaderList = [
@@ -68,6 +64,8 @@ def aja_mov2ffv1_main():
     print ("***STARTING PROCESS***")
 
     for movFilename in glob.glob1(indir, "*.mov"):
+        #create names that will be used in the script
+        #TO DO: handle transcoding legacy files (either need a flag that avoids appending pm to the output filename or the ability to read the desired output filename from the CSV file
         inputAbsPath = os.path.join(indir, movFilename)
         baseFilename = movFilename.replace('.mov','')
         baseOutput = os.path.join(outdir, baseFilename)
@@ -80,119 +78,100 @@ def aja_mov2ffv1_main():
         acOutputFolder = os.path.join(baseOutput, ac_identifier)
         acAbsPath = os.path.join(acOutputFolder, baseFilename + '-' + ac_identifier + '.mp4')
         metaOutputFolder = os.path.join(baseOutput, metadata_identifier)
-        jsonOutputFile = os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json')
-        #transcode start time
-        tstime = 'Pending'
-        #transcode finish time
-        tftime = 'Pending'    
+        jsonAbsPath = os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json')
+        pmMD5AbsPath = os.path.join(pmOutputFolder, baseFilename + '-' + pm_identifier + '.md5')
         
         #generate ffprobe metadata from input
-        input_metadata = supportfuncs.ffprobe_report(ffprobePath, inputAbsPath, movFilename)  
+        input_metadata = mov2ffv1supportfuncs.ffprobe_report(movFilename, inputAbsPath)  
         
         #create a list of needed output folders and make them
-        outFolders = [pmOutputFolder, acOutputFolder, metaOutputFolder]
-        supportfuncs.create_transcode_output_folders(baseOutput, outFolders)
+        if not args.skip_ac:
+            outFolders = [pmOutputFolder, acOutputFolder, metaOutputFolder]
+        else:
+            outFolders = [pmOutputFolder, metaOutputFolder]
+        mov2ffv1supportfuncs.create_transcode_output_folders(baseOutput, outFolders)
         
         print ("\n")
         #get information about item from csv inventory
         print("*checking inventory for", baseFilename + "*")
         item_csvDict = csvDict.get(baseFilename)
-        if item_csvDict is None:
-            print("unable to locate", baseFilename, "in csv data!")
-            inventoryCheck = "FAIL"
-        else:
-            print("item found in inventory")
-            inventoryCheck = "PASS"
+        #PASS/FAIL - was the file found in the inventory
+        inventoryCheck = mov2ffv1passfail_checks.inventory_check(item_csvDict)
         
-        #build ffmpeg command
         print ("*losslessly transcoding", baseFilename + "*")
-        audioStreamCounter = input_metadata['techMetaA']['audio stream count']
-        ffmpeg_command = [ffmpegPath]
-        if not parameterDict.get('verbose'):
-            ffmpeg_command.extend(('-loglevel', 'error'))
-        ffmpeg_command.extend(['-i', inputAbsPath, '-map', '0', '-dn', '-c:v', 'ffv1', '-level', '3', '-g', '1', '-slices', ffv1_slice_count, '-slicecrc', '1'])
-        #TO DO: consider putting color data in a list or dict to replace the following if statements with a single if statement in a for loop
-        if input_metadata['techMetaV']['color primaries']:
-            ffmpeg_command.extend(('-color_primaries', input_metadata['techMetaV']['color primaries']))
-        if input_metadata['techMetaV']['color transfer']:
-            ffmpeg_command.extend(('-color_trc', input_metadata['techMetaV']['color transfer']))
-        if input_metadata['techMetaV']['color space']:
-            ffmpeg_command.extend(('-colorspace', input_metadata['techMetaV']['color space']))
-        if audioStreamCounter > 0:
-            ffmpeg_command.extend(('-c:a', 'flac', '-compression_level', '12'))
-        ffmpeg_command.extend((tempMasterFile, '-f', 'framemd5', '-an', framemd5AbsPath))
         
         #log transcode start time
         tstime = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-        #execute ffmpeg command
-        subprocess.run(ffmpeg_command)
+
+        #losslessly transcode with ffmpeg
+        transcode_nameDict = {
+        'inputAbsPath' : inputAbsPath,
+        'tempMasterFile' : tempMasterFile,
+        'framemd5AbsPath' : framemd5AbsPath,
+        'outputAbsPath' : outputAbsPath,
+        'framemd5File' : framemd5File
+        }
+        audioStreamCounter = input_metadata['techMetaA']['audio stream count']
+        mov2ffv1supportfuncs.ffv1_lossless_transcode(input_metadata, transcode_nameDict, audioStreamCounter)
         
-        #remux to attach framemd5
-        add_attachment = [ffmpegPath, '-loglevel', 'error', '-i', tempMasterFile, '-c', 'copy', '-map', '0', '-attach', framemd5AbsPath, '-metadata:s:t:0', 'mimetype=application/octet-stream', '-metadata:s:t:0', 'filename=' + framemd5File, outputAbsPath]    
-        if os.path.isfile(tempMasterFile):
-            subprocess.call(add_attachment)
-            #log transcode finish time
-            tftime = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-            supportfuncs.ffv1_lossless_transcode_cleanup(tempMasterFile, framemd5AbsPath)
-        else:
-            print ("There was an issue finding the file", tempMasterFile)
+        #log transcode finish time
+        tftime = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
         
         #If ffv1 file was succesfully created, do remaining verification and transcoding work
         if os.path.isfile(outputAbsPath):
             #create checksum sidecar file for preservation master
             print ("*creating checksum*")
             mkvHash = corefuncs.hashlib_md5(outputAbsPath)
-            with open (os.path.join(pmOutputFolder, baseFilename + '-' + pm_identifier + '.md5'), 'w',  newline='\n') as f:
+            with open (pmMD5AbsPath, 'w',  newline='\n') as f:
                 print(mkvHash, '*' + mkvFilename, file=f)
             
             #compare streamMD5s
             print ("*verifying losslessness*")
-            mov_stream_sum = supportfuncs.checksum_streams(ffmpegPath, inputAbsPath, audioStreamCounter)
-            mkv_stream_sum = supportfuncs.checksum_streams(ffmpegPath, outputAbsPath, audioStreamCounter)
-            #TO DO: move into own function and return pass or fail
-            if mkv_stream_sum == mov_stream_sum:
-                print ('stream checksums match.  Your file is lossless')
-                streamMD5status = "PASS"
-            else:
-                print ('stream checksums do not match.  Output file may not be lossless')
-                streamMD5status = "FAIL"
+            mov_stream_sum = mov2ffv1supportfuncs.checksum_streams(inputAbsPath, audioStreamCounter)
+            mkv_stream_sum = mov2ffv1supportfuncs.checksum_streams(outputAbsPath, audioStreamCounter)
+            #PASS/FAIL - check if input stream md5s match output stream md5s
+            streamMD5status = mov2ffv1passfail_checks.stream_md5_status(mov_stream_sum, mkv_stream_sum)
             
             #create a dictionary with the mediaconch results from the MOV and MKV files
             mediaconchResults_dict = {
-            'MOV Mediaconch Policy': supportfuncs.run_mediaconch(mediaconchPath, inputAbsPath, movPolicy),
-            'MKV Mediaconch Policy': supportfuncs.run_mediaconch(mediaconchPath, outputAbsPath, mkvPolicy),
+            'MOV Mediaconch Policy': mov2ffv1supportfuncs.run_mediaconch(inputAbsPath, movPolicy),
+            'MKV Mediaconch Policy': mov2ffv1supportfuncs.run_mediaconch(outputAbsPath, mkvPolicy),
             }
-            #check if any mediaconch results failed and append failed policies to results
-            mediaconchResults = supportfuncs.parse_mediaconchResults(mediaconchResults_dict)
+            #PASS/FAIL - check if any mediaconch results failed and append failed policies to results
+            mediaconchResults = mov2ffv1passfail_checks.parse_mediaconchResults(mediaconchResults_dict)
             
             #run ffprobe on the output file
-            output_metadata = supportfuncs.ffprobe_report(ffprobePath, outputAbsPath, mkvFilename)
+            output_metadata = mov2ffv1supportfuncs.ffprobe_report(mkvFilename, outputAbsPath)
             #log system info
-            systemInfo = supportfuncs.generate_system_log(ffvers, tstime, tftime)      
+            systemInfo = mov2ffv1supportfuncs.generate_system_log(ffvers, tstime, tftime)      
+            
+            #PASS/FAIL - are files lossless
+            losslessCheck = mov2ffv1passfail_checks.lossless_check(input_metadata, output_metadata, streamMD5status)
             
             #create a dictionary containing QC results
-            qcResults = supportfuncs.qc_results(input_metadata, output_metadata, mediaconchResults, streamMD5status, inventoryCheck)
+            qcResults = mov2ffv1supportfuncs.qc_results(inventoryCheck, losslessCheck, mediaconchResults)
             
             #create json metadata file
             #TO DO: combine checksums into a single dictionary to reduce variables needed here
-            supportfuncs.create_json(jsonOutputFile, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, item_csvDict, qcResults)
+            mov2ffv1supportfuncs.create_json(jsonAbsPath, systemInfo, input_metadata, mov_stream_sum, mkvHash, mkv_stream_sum, baseFilename, output_metadata, item_csvDict, qcResults)
             
-            #create access copy
-            print ('*transcoding access copy*')
-            supportfuncs.two_pass_h264_encoding(ffmpegPath, audioStreamCounter, mixdown, outputAbsPath, acAbsPath)
-            
-            #create checksum sidecar file for access copy
-            acHash = corefuncs.hashlib_md5(acAbsPath)
-            with open (os.path.join(acOutputFolder, baseFilename + '-' + ac_identifier + '.md5'), 'w',  newline='\n') as f:
-                print(acHash, '*' + baseFilename + '-' + ac_identifier + '.mp4', file=f)
-            
+            if not args.skip_ac:
+                #create access copy
+                print ('*transcoding access copy*')
+                mov2ffv1supportfuncs.two_pass_h264_encoding(audioStreamCounter, outputAbsPath, acAbsPath)
+                
+                #create checksum sidecar file for access copy
+                acHash = corefuncs.hashlib_md5(acAbsPath)
+                with open (os.path.join(acOutputFolder, baseFilename + '-' + ac_identifier + '.md5'), 'w',  newline='\n') as f:
+                    print(acHash, '*' + baseFilename + '-' + ac_identifier + '.mp4', file=f)
+                
             #log access copy filename if access copy was created
             #TO DO: verify that access copy runtime matches pm runtime?
             if os.path.isfile(acAbsPath):
                 acFilename = baseFilename + '-' + ac_identifier + '.mp4'
             else:
-                acFilename = "Access Copy not found"
-
+                acFilename = "No access copy found"
+                
             #get current date for logging when QC happned
             qcDate = str(datetime.datetime.today().strftime('%Y-%m-%d'))
             
@@ -210,21 +189,22 @@ def aja_mov2ffv1_main():
             None,
             acFilename,
             mkvFilename,
-            supportfuncs.convert_runtime(output_metadata['file metadata']['duration'])
+            mov2ffv1supportfuncs.convert_runtime(output_metadata['file metadata']['duration'])
             ]
             
             #Add QC results to QC log csv file
-            supportfuncs.write_output_csv(outdir, csvHeaderList, csvWriteList, output_metadata, qcResults)
+            mov2ffv1supportfuncs.write_output_csv(outdir, csvHeaderList, csvWriteList, output_metadata, qcResults)
             
             #create spectrogram for pm audio channels
             if audioStreamCounter > 0:
                 print ("*generating QC spectrograms*")
                 channel_layout_list = input_metadata['techMetaA']['channels']
-                supportfuncs.generate_spectrogram(ffmpegPath, outputAbsPath, channel_layout_list, metaOutputFolder, baseFilename)
+                mov2ffv1supportfuncs.generate_spectrogram(outputAbsPath, channel_layout_list, metaOutputFolder, baseFilename)
             
             #create qctools report
-            print ("*creating qctools report*")
-            supportfuncs.generate_qctools(qcliPath, outputAbsPath)
+            if not args.skip_qcli:
+                print ("*creating qctools report*")
+                mov2ffv1supportfuncs.generate_qctools(outputAbsPath)
             
         else:
             print ('No file in output folder.  Skipping file processing')
