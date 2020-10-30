@@ -14,11 +14,15 @@ from aja_mov2ffv1 import mov2ffv1passfail_checks
 #TO DO: general cleanup
 
 def aja_mov2ffv1_main():
-    #parameterDict = vars(args)
+    #the pm identifier is the name of the folder that the preservation file will be output to
     pm_identifier = 'pm'
+    #the ac identifier will be used as the folder name for the access file
+    #it will also be appended to the end of the access copy filename
     ac_identifier = 'ac'
     metadata_identifier = 'meta'
-    #pm_filename_identifier = '-pm'
+    #identifier appended to the end of the MKV preservation file
+    #Replace with "None" to keep the name the same as the input
+    pm_filename_identifier = '-pm'
     inventoryName = 'transcode_inventory.csv'
     mov_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MOV.xml'
     mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MKV-FLAC.xml'
@@ -70,16 +74,17 @@ def aja_mov2ffv1_main():
         baseFilename = movFilename.replace('.mov','')
         baseOutput = os.path.join(outdir, baseFilename)
         pmOutputFolder = os.path.join(baseOutput, pm_identifier)
-        mkvFilename = os.path.join(baseFilename + '-' + pm_identifier + '.mkv')
+        mkvBaseFilename = (baseFilename + pm_filename_identifier ) if pm_filename_identifier else (baseFilename)
+        mkvFilename = mkvBaseFilename + '.mkv'
         outputAbsPath = os.path.join(pmOutputFolder, mkvFilename)
         tempMasterFile = os.path.join(pmOutputFolder, baseFilename + '-tmp.mkv')
-        framemd5File = os.path.join(baseFilename + '-' + pm_identifier + '.framemd5')
+        framemd5File = mkvBaseFilename + '.framemd5'
         framemd5AbsPath = os.path.join(pmOutputFolder, framemd5File)
         acOutputFolder = os.path.join(baseOutput, ac_identifier)
         acAbsPath = os.path.join(acOutputFolder, baseFilename + '-' + ac_identifier + '.mp4')
         metaOutputFolder = os.path.join(baseOutput, metadata_identifier)
         jsonAbsPath = os.path.join(metaOutputFolder, baseFilename + '-' + metadata_identifier + '.json')
-        pmMD5AbsPath = os.path.join(pmOutputFolder, baseFilename + '-' + pm_identifier + '.md5')
+        pmMD5AbsPath = os.path.join(pmOutputFolder, mkvBaseFilename + '.md5')
         
         #generate ffprobe metadata from input
         input_metadata = mov2ffv1supportfuncs.ffprobe_report(movFilename, inputAbsPath)  

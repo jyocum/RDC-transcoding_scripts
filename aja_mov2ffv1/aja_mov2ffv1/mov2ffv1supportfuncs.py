@@ -264,7 +264,7 @@ def qc_results(inventoryCheck, losslessCheck, mediaconchResults):
     return QC_results
 
 def guess_date(string):
-    for fmt in ["%m/%d/%Y", "%d-%m-%Y", "%m/%d/%y"]:
+    for fmt in ["%m/%d/%Y", "%d-%m-%Y", "%m/%d/%y", "%Y-%m-%d"]:
         try:
             return datetime.datetime.strptime(string, fmt).date()
         except ValueError:
