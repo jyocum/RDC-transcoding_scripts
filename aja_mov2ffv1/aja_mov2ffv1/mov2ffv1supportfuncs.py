@@ -303,53 +303,75 @@ def import_csv(csvInventory):
     try:
         with open(csvInventory)as f:
             reader = csv.DictReader(f, delimiter=',')
-            for row in reader:
-                name = row['File name']
-                id1 = row['Accession number/Call number']
-                id2 = row['ALMA number/Finding Aid']
-                title = row['Title']
-                record_date = row['Record Date/Time']
-                container_markings = row['Housing/Container/Cassette Markings']
-                container_markings = container_markings.split('\n')
-                description = row['Description']
-                condition_notes = row['Condition']
-                format = row['Format']
-                captureDate = row['Capture Date']
-                #try to format date as yyyy-mm-dd if not formatted correctly
-                captureDate = str(guess_date(captureDate))
-                digitizationOperator = row['Digitization Operator']
-                vtr = row['VTR']
-                vtrOut = row['VTR Output Used']
-                tapeBrand = row['Tape Brand']
-                recordMode = row['Tape Record Mode']
-                tbc = row['TBC']
-                tbcOut = row['TBC Output Used']
-                adc = row['ADC']
-                dio = row['Capture Card']
-                sound = row['Sound']
-                sound = sound.split('\n')
-                capture_notes = row['Capture notes']
-                coding_history = []
-                coding_history = generate_coding_history(coding_history, vtr, [tapeBrand, recordMode, vtrOut])
-                coding_history = generate_coding_history(coding_history, tbc, [tbcOut])
-                coding_history = generate_coding_history(coding_history, adc, [None])
-                coding_history = generate_coding_history(coding_history, dio, [None])
-                csvData = {
-                'Accession number/Call number' : id1,
-                'ALMA number/Finding Aid' : id2,
-                'Title' : title,
-                'Record Date' : record_date,
-                'Container Markings' : container_markings,
-                'Description' : description,
-                'Condition Notes' : condition_notes,
-                'Format' : format,
-                'Digitization Operator' : digitizationOperator,
-                'Capture Date' : captureDate,
-                'Coding History' : coding_history,
-                'Sound Note' : sound,
-                'Capture Notes' : capture_notes
-                }
-                csvDict.update({name : csvData})
+            video_fieldnames_list = ['File name', 'Accession number/Call number', 'ALMA number/Finding Aid', 'Title', 'Record Date/Time', 'Housing/Container/Cassette Markings', 'Description', 'Condition', 'Format', 'Capture Date', 'Digitization Operator', 'VTR', 'VTR Output Used', 'Tape Brand', 'Tape Record Mode', 'TBC', 'TBC Output Used', 'ADC', 'Capture Card', 'Sound', 'Capture notes']
+            missing_fieldnames = [i for i in video_fieldnames_list if not i in reader.fieldnames]
+            if not missing_fieldnames:
+                for row in reader:
+                    name = row['File name']
+                    id1 = row['Accession number/Call number']
+                    id2 = row['ALMA number/Finding Aid']
+                    title = row['Title']
+                    record_date = row['Record Date/Time']
+                    container_markings = row['Housing/Container/Cassette Markings']
+                    container_markings = container_markings.split('\n')
+                    description = row['Description']
+                    condition_notes = row['Condition']
+                    format = row['Format']
+                    captureDate = row['Capture Date']
+                    #try to format date as yyyy-mm-dd if not formatted correctly
+                    captureDate = str(guess_date(captureDate))
+                    digitizationOperator = row['Digitization Operator']
+                    vtr = row['VTR']
+                    vtrOut = row['VTR Output Used']
+                    tapeBrand = row['Tape Brand']
+                    recordMode = row['Tape Record Mode']
+                    tbc = row['TBC']
+                    tbcOut = row['TBC Output Used']
+                    adc = row['ADC']
+                    dio = row['Capture Card']
+                    sound = row['Sound']
+                    sound = sound.split('\n')
+                    capture_notes = row['Capture notes']
+                    coding_history = []
+                    coding_history = generate_coding_history(coding_history, vtr, [tapeBrand, recordMode, vtrOut])
+                    coding_history = generate_coding_history(coding_history, tbc, [tbcOut])
+                    coding_history = generate_coding_history(coding_history, adc, [None])
+                    coding_history = generate_coding_history(coding_history, dio, [None])
+                    csvData = {
+                    'Accession number/Call number' : id1,
+                    'ALMA number/Finding Aid' : id2,
+                    'Title' : title,
+                    'Record Date' : record_date,
+                    'Container Markings' : container_markings,
+                    'Description' : description,
+                    'Condition Notes' : condition_notes,
+                    'Format' : format,
+                    'Digitization Operator' : digitizationOperator,
+                    'Capture Date' : captureDate,
+                    'Coding History' : coding_history,
+                    'Sound Note' : sound,
+                    'Capture Notes' : capture_notes
+                    }
+                    csvDict.update({name : csvData})
+            elif not 'File name' in missing_fieldnames:
+                print("WARNING: Unable to find all column names in csv file")
+                print("File name column found. Interpreting csv file as file list")
+                print("CONTINUE? (y/n)")
+                yes = {'yes','y', 'ye', ''}
+                no = {'no','n'}
+                choice = input().lower()
+                if choice in yes:
+                   for row in reader:
+                        name = row['File name']
+                        csvData = {}
+                        csvDict.update({name : csvData})
+                elif choice in no:
+                   quit()
+                else:
+                   sys.stdout.write("Please respond with 'yes' or 'no'")
+                   quit()
+            else:
+                print("No matching column names found in csv file")
             #print(csvDict)
     except FileNotFoundError:
         print("Issue importing csv file")

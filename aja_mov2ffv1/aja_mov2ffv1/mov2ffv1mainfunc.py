@@ -22,10 +22,20 @@ def aja_mov2ffv1_main():
     metadata_identifier = 'meta'
     #identifier appended to the end of the MKV preservation file
     #Replace with "None" to keep the name the same as the input
-    pm_filename_identifier = '-pm'
+    if not args.keep_mov_filename:
+        pm_filename_identifier = '-pm'
+    else:
+        pm_filename_identifier = None
     inventoryName = 'transcode_inventory.csv'
-    mov_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MOV.xml'
-    mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MKV-PCM.xml'
+    #assign mediaconch policies to use
+    if not args.input_policy:
+        movPolicy = os.path.join(os.path.dirname(__file__), 'data/mediaconch_policies/AJA_NTSC_VHS-4AS-MOV.xml')
+    else:
+        movPolicy = args.input_policy
+    if not args.output_policy:
+        mkvPolicy = os.path.join(os.path.dirname(__file__), 'data/mediaconch_policies/AJA_NTSC_VHS-4AS-MKV-PCM.xml')
+    else:
+        mkvPolicy = args.output_policy
     
     #assign input directory and output directory
     indir = corefuncs.input_check()
@@ -40,9 +50,7 @@ def aja_mov2ffv1_main():
     ffvers = corefuncs.get_ffmpeg_version()
 
     #verify that mediaconch policies are present
-    movPolicy = os.path.join(os.path.dirname(__file__), 'data/mediaconch_policies', mov_mediaconch_policy)
     corefuncs.mediaconch_policy_exists(movPolicy)
-    mkvPolicy = os.path.join(os.path.dirname(__file__), 'data/mediaconch_policies', mkv_mediaconch_policy)
     corefuncs.mediaconch_policy_exists(mkvPolicy)
 
     csvInventory = os.path.join(indir, inventoryName)
