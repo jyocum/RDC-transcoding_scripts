@@ -25,7 +25,7 @@ def aja_mov2ffv1_main():
     pm_filename_identifier = '-pm'
     inventoryName = 'transcode_inventory.csv'
     mov_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MOV.xml'
-    mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MKV-FLAC.xml'
+    mkv_mediaconch_policy = 'AJA_NTSC_VHS-4AS-MKV-PCM.xml'
     
     #assign input directory and output directory
     indir = corefuncs.input_check()
@@ -201,7 +201,7 @@ def aja_mov2ffv1_main():
             mov2ffv1supportfuncs.write_output_csv(outdir, csvHeaderList, csvWriteList, output_metadata, qcResults)
             
             #create spectrogram for pm audio channels
-            if audioStreamCounter > 0:
+            if audioStreamCounter > 0 and not args.skip_spectrogram:
                 print ("*generating QC spectrograms*")
                 channel_layout_list = input_metadata['techMetaA']['channels']
                 mov2ffv1supportfuncs.generate_spectrogram(outputAbsPath, channel_layout_list, metaOutputFolder, baseFilename)

@@ -20,5 +20,6 @@ parser.add_argument('--mixdown', action='store', dest='mixdown', default='copy',
 parser.add_argument('--slices', action='store', dest='ffv1_slice_count', default='16', choices=[4,6,9,12,16,24,30], type=int, help='Set the FFV1 slice count used by ffmpeg when losslessly transcoding files. Default is 16.')
 parser.add_argument('--skipac', required=False, action='store_true', dest='skip_ac', help='skip access copy transcoding')
 parser.add_argument('--skipqcli', required=False, action='store_true', dest='skip_qcli', help='skip generating qc tools report')
+parser.add_argument('--skipspectrogram', required=False, action='store_true', dest='skip_spectrogram', help='skip generating spectrograms')
 
 args = parser.parse_args()

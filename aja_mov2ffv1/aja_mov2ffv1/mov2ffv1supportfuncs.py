@@ -132,7 +132,7 @@ def ffv1_lossless_transcode(input_metadata, transcode_nameDict, audioStreamCount
     if input_metadata['techMetaV']['color space']:
         ffmpeg_command.extend(('-colorspace', input_metadata['techMetaV']['color space']))
     if audioStreamCounter > 0:
-        ffmpeg_command.extend(('-c:a', 'flac', '-compression_level', '12'))
+        ffmpeg_command.extend(('-c:a', 'copy'))
     ffmpeg_command.extend((tempMasterFile, '-f', 'framemd5', '-an', framemd5AbsPath))
 
     #execute ffmpeg command
