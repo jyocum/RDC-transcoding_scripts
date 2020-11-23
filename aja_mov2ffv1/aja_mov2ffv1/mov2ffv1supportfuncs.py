@@ -303,13 +303,14 @@ def import_csv(csvInventory):
     try:
         with open(csvInventory)as f:
             reader = csv.DictReader(f, delimiter=',')
-            video_fieldnames_list = ['File name', 'Accession number/Call number', 'ALMA number/Finding Aid', 'Title', 'Record Date/Time', 'Housing/Container/Cassette Markings', 'Description', 'Condition', 'Format', 'Capture Date', 'Digitization Operator', 'VTR', 'VTR Output Used', 'Tape Brand', 'Tape Record Mode', 'TBC', 'TBC Output Used', 'ADC', 'Capture Card', 'Sound', 'Capture notes']
+            video_fieldnames_list = ['File name', 'Accession number/Call number', 'ALMA number/Finding Aid', 'Barcode', 'Title', 'Record Date/Time', 'Housing/Container/Cassette Markings', 'Description', 'Condition', 'Format', 'Capture Date', 'Digitization Operator', 'VTR', 'VTR Output Used', 'Tape Brand', 'Tape Record Mode', 'TBC', 'TBC Output Used', 'ADC', 'Capture Card', 'Sound', 'Region', 'Capture notes']
             missing_fieldnames = [i for i in video_fieldnames_list if not i in reader.fieldnames]
             if not missing_fieldnames:
                 for row in reader:
                     name = row['File name']
                     id1 = row['Accession number/Call number']
                     id2 = row['ALMA number/Finding Aid']
+                    id3 = row['Barcode']
                     title = row['Title']
                     record_date = row['Record Date/Time']
                     container_markings = row['Housing/Container/Cassette Markings']
@@ -331,15 +332,17 @@ def import_csv(csvInventory):
                     dio = row['Capture Card']
                     sound = row['Sound']
                     sound = sound.split('\n')
+                    region = row['Region']
                     capture_notes = row['Capture notes']
                     coding_history = []
-                    coding_history = generate_coding_history(coding_history, vtr, [tapeBrand, recordMode, vtrOut])
+                    coding_history = generate_coding_history(coding_history, vtr, [tapeBrand, recordMode, region, vtrOut])
                     coding_history = generate_coding_history(coding_history, tbc, [tbcOut])
                     coding_history = generate_coding_history(coding_history, adc, [None])
                     coding_history = generate_coding_history(coding_history, dio, [None])
                     csvData = {
                     'Accession number/Call number' : id1,
                     'ALMA number/Finding Aid' : id2,
+                    'Barcode' : id3,
                     'Title' : title,
                     'Record Date' : record_date,
                     'Container Markings' : container_markings,
