@@ -301,7 +301,7 @@ def generate_coding_history(coding_history, hardware, append_list):
 def import_csv(csvInventory):
     csvDict = {}
     try:
-        with open(csvInventory)as f:
+        with open(csvInventory, encoding='utf-8')as f:
             reader = csv.DictReader(f, delimiter=',')
             video_fieldnames_list = ['File name', 'Accession number/Call number', 'ALMA number/Finding Aid', 'Barcode', 'Title', 'Record Date/Time', 'Housing/Container/Cassette Markings', 'Description', 'Condition', 'Format', 'Capture Date', 'Digitization Operator', 'VTR', 'VTR Output Used', 'Tape Brand', 'Tape Record Mode', 'TBC', 'TBC Output Used', 'ADC', 'Capture Card', 'Sound', 'Region', 'Capture notes']
             missing_fieldnames = [i for i in video_fieldnames_list if not i in reader.fieldnames]
@@ -320,7 +320,8 @@ def import_csv(csvInventory):
                     format = row['Format']
                     captureDate = row['Capture Date']
                     #try to format date as yyyy-mm-dd if not formatted correctly
-                    captureDate = str(guess_date(captureDate))
+                    if captureDate:
+                        captureDate = str(guess_date(captureDate))
                     digitizationOperator = row['Digitization Operator']
                     vtr = row['VTR']
                     vtrOut = row['VTR Output Used']
