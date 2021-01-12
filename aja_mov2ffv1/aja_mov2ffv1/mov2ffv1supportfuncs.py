@@ -234,8 +234,16 @@ def generate_qctools(input):
     qctools_args = [args.qcli_path, '-i', input]
     subprocess.run(qctools_args)
 
-def run_mediaconch(input, policy):
+def mediaconch_policy_check(input, policy):
     mediaconchResults = subprocess.check_output([args.mediaconch_path, '--policy=' + policy, input]).decode("ascii").rstrip().split()[0]
+    if mediaconchResults == "pass!":
+        mediaconchResults = "PASS"
+    else:
+        mediaconchResults = "FAIL"
+    return mediaconchResults
+
+def mediaconch_implementation_check(input):
+    mediaconchResults = subprocess.check_output([args.mediaconch_path, input]).decode("ascii").rstrip().split()[0]
     if mediaconchResults == "pass!":
         mediaconchResults = "PASS"
     else:

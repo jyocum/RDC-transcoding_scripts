@@ -147,8 +147,9 @@ def aja_mov2ffv1_main():
             
             #create a dictionary with the mediaconch results from the MOV and MKV files
             mediaconchResults_dict = {
-            'MOV Mediaconch Policy': mov2ffv1supportfuncs.run_mediaconch(inputAbsPath, movPolicy),
-            'MKV Mediaconch Policy': mov2ffv1supportfuncs.run_mediaconch(outputAbsPath, mkvPolicy),
+            'MOV Mediaconch Policy': mov2ffv1supportfuncs.mediaconch_policy_check(inputAbsPath, movPolicy),
+            'MKV Implementation':  mov2ffv1supportfuncs.mediaconch_implementation_check(outputAbsPath),
+            'MKV Mediaconch Policy': mov2ffv1supportfuncs.mediaconch_policy_check(outputAbsPath, mkvPolicy),
             }
             #PASS/FAIL - check if any mediaconch results failed and append failed policies to results
             mediaconchResults = mov2ffv1passfail_checks.parse_mediaconchResults(mediaconchResults_dict)
