@@ -22,7 +22,7 @@ def aja_mov2ffv1_main():
     metadata_identifier = 'meta'
     #identifier appended to the end of the MKV preservation file
     #Replace with "None" to keep the name the same as the input
-    if not args.keep_mov_filename:
+    if not args.keep_filename:
         pm_filename_identifier = '-pm'
     else:
         pm_filename_identifier = None

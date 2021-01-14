@@ -21,7 +21,7 @@ parser.add_argument('--slices', action='store', dest='ffv1_slice_count', default
 parser.add_argument('--skipac', required=False, action='store_true', dest='skip_ac', help='skip access copy transcoding')
 parser.add_argument('--skipqcli', required=False, action='store_true', dest='skip_qcli', help='skip generating qc tools report')
 parser.add_argument('--skipspectrogram', required=False, action='store_true', dest='skip_spectrogram', help='skip generating spectrograms')
-parser.add_argument('--keep_mov_filename', required=False, action='store_true', dest='keep_mov_filename', help='MKV preservation master will have the same filename as the source MOV file')
+parser.add_argument('--keep_filename', required=False, action='store_true', dest='keep_mov_filename', help='MKV preservation master will have the same filename as the source MOV file')
 parser.add_argument('--input_policy', required=False, action='store', dest='input_policy', help='Mediaconch policy for input files')
 parser.add_argument('--output_policy', required=False, action='store', dest='output_policy', help='Mediaconch policy for output files')
 
