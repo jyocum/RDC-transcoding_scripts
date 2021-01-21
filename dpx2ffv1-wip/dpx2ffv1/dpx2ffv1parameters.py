@@ -24,6 +24,8 @@ parser.add_argument('--skipspectrogram', required=False, action='store_true', de
 parser.add_argument('--keep_filename', required=False, action='store_true', dest='keep_filename', help='MKV preservation master will have the same filename as the source file')
 parser.add_argument('--input_policy', required=False, action='store', dest='input_policy', help='Mediaconch policy for input files')
 parser.add_argument('--output_policy', required=False, action='store', dest='output_policy', help='Mediaconch policy for output files')
-parser.add_argument('--filter_list', required=False, action='store', dest='filter_list')
+parser.add_argument('--filter_list', required=False, action='store', dest='filter_list', help='Provide a text file with a list of files')
+parser.add_argument('--framerate', '-r', action='store', dest='framerate', type=str, help='For setting a custom framerate')
+
 
 args = parser.parse_args()

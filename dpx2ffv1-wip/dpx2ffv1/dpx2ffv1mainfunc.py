@@ -9,34 +9,12 @@ import datetime
 from dpx2ffv1.dpx2ffv1parameters import args
 #from dpx2ffv1 import dpx2ffv1supportfuncs
 from dpx2ffv1 import corefuncs
+from dpx2ffv1 import classes
 #from dpx2ffv1 import dpx2ffv1passfail_checks
 
 
 def dpx2ffv1_main():
-    #the pm identifier is the name of the folder that the preservation file will be output to
-    pm_identifier = 'pm'
-    #the ac identifier will be used as the folder name for the access file
-    #it will also be appended to the end of the access copy filename
-    ac_identifier = 'ac'
-    metadata_identifier = 'meta'
-    #identifier appended to the end of the MKV preservation file
-    #Replace with "None" to keep the name the same as the input
-    if not args.keep_filename:
-        pm_filename_identifier = '-pm'
-    else:
-        pm_filename_identifier = None
     inventoryName = 'transcode_inventory.csv'
-    '''
-    #assign mediaconch policies to use
-    if not args.input_policy:
-        movPolicy = os.path.join(os.path.dirname(__file__), 'data/mediaconch_policies/AJA_NTSC_VHS-4AS-MOV.xml')
-    else:
-        movPolicy = args.input_policy
-    if not args.output_policy:
-        mkvPolicy = os.path.join(os.path.dirname(__file__), 'data/mediaconch_policies/AJA_NTSC_VHS-4AS-MKV-PCM.xml')
-    else:
-        mkvPolicy = args.output_policy
-    '''
   
     #assign input directory and output directory
     indir = corefuncs.input_check()
@@ -51,13 +29,12 @@ def dpx2ffv1_main():
     ffvers = corefuncs.get_ffmpeg_version()
     
     def get_immediate_subdirectories(folder):
-        '''
-        get immediate subdirectories of input
-        '''
+        """get immediate subdirectories of input"""
         return [name for name in os.listdir(folder)
             if os.path.isdir(os.path.join(folder, name))]
 
     def filterFilenames(title_list):
+        """identify titles to process based on a provided list"""
         with open(args.filter_list) as f:
             filter_list = [line.rstrip() for line in f]
 
@@ -68,6 +45,7 @@ def dpx2ffv1_main():
 
     #create the list of folders to run the script on
     title_list = get_immediate_subdirectories(indir)
+    #if a list of titles was provided, select only those titles to process
     if args.filter_list:
         with open(args.filter_list) as f:
             filter_list = set(line.rstrip() for line in f)
@@ -75,9 +53,7 @@ def dpx2ffv1_main():
         title_list = [item for item in title_list if item in filter_list]
     
     '''
-    #verify that mediaconch policies are present
-    corefuncs.mediaconch_policy_exists(movPolicy)
-    corefuncs.mediaconch_policy_exists(mkvPolicy)
+
 
     csvInventory = os.path.join(indir, inventoryName)
     csvDict = dpx2ffv1metawrangler.import_csv(csvInventory)
@@ -103,9 +79,22 @@ def dpx2ffv1_main():
     #get list of subdirectories from input
     #iterate through list
     #if directory exists in inventory (inventory check pass/fail)
+    films = [classes.FilmObject(name) for name in title_list]
+    
+    for filmObject in films:
+        #TO DO check if filmObject exists in inventory. If so, import data
+        #TO DO run ffprobe on source file?
+        print ("The status for", filmObject.get_name(), "is", filmObject.get_status())
+        variableDict = filmObject.set_variables(filmObject.get_name(), indir, outdir)
+        
+        filmObject.run_rawcooked(variableDict)
+        #generate ffprobe metadata from input
+        print ("perform transcoding and QC")
+        filmObject.set_status("Complete")
+        print ("The status for", filmObject.get_name(), "is", filmObject.get_status())
 
-    for folder in title_list:
-        print (folder)
+    #for filmObject in films:
+    #    filmObject.print_status()    
         '''
         #create names that will be used in the script
         inputAbsPath = os.path.join(indir, movFilename)
