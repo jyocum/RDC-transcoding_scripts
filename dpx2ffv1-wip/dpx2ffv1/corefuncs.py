@@ -126,3 +126,19 @@ def get_ffmpeg_version():
         print ("Error getting ffmpeg version")
         quit()
     return ffmpeg_version
+
+def get_rawcooked_version():
+    '''
+    Returns the version of ffmpeg
+    '''
+    rawcooked_version = 'rawcooked'
+    try:
+        rawcooked_version = subprocess.check_output([
+            args.rawcooked_path, '--version'
+        ]).decode("ascii").rstrip().split()[1]
+    except:
+        print ("Error getting rawcooked version")
+        quit()
+    print (rawcooked_version)
+    quit()
+    return rawcooked_version

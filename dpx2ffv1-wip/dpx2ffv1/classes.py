@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import subprocess
 from dpx2ffv1.dpx2ffv1parameters import args
 
 class FilmObject:
@@ -18,13 +19,14 @@ class FilmObject:
     def set_variables(self, name, indir, outdir):
         #TO DO come up with a better way of organizing variables
         #set identifiers for output folder and file names
-        preservation_folder = 'p'
-        access_folder = 'a'
+        preservation_folder = 'pm'
+        access_folder = 'ac'
         metadata = 'meta'
         transcode_input = os.path.join(indir, name, preservation_folder)
-        outputBaseFilename = (name + '-p' ) if args.keep_filename else (name)
+        outputBaseFilename = (name + '-pm' ) if args.keep_filename else (name)
         pmAbsPath = os.path.join(outdir, outputBaseFilename, preservation_folder)
         mkv_file = os.path.join(pmAbsPath, name + '.mkv')
+        framemd5 = os.path.join(pmAbsPath, name + '.framemd5')
         
         
         object_variables = {
@@ -34,7 +36,8 @@ class FilmObject:
         'transcode input' : transcode_input,
         'outputBaseFilename' : outputBaseFilename,
         'pmAbsPath' : pmAbsPath,
-        'mkv_file' : mkv_file
+        'mkv_file' : mkv_file,
+        'framemd5' : framemd5
         }
         
         '''
@@ -70,11 +73,12 @@ class FilmObject:
     
     def run_rawcooked(self, object_variables):
         #TO DO log rawcooked version and check that rawcooked exists
-        rawcooked_command = [args.rawcooked_path, '--all', '-s', '10000000'] 
+        rawcooked_command = [args.rawcooked_path, '--all', '--framemd5', '--framemd5-name', object_variables.get('framemd5')] 
         if args.framerate:
             rawcooked_command += ['-framerate', args.framerate]
         rawcooked_command += [object_variables.get('transcode input'), '-o', object_variables.get('mkv_file')]
         print(rawcooked_command)
+        subprocess.call(rawcooked_command)
     
     def get_name(self):
         return self.name

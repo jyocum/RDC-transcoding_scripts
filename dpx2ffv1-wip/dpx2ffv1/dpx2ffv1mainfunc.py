@@ -27,6 +27,7 @@ def dpx2ffv1_main():
     corefuncs.mediaconch_check()
     corefuncs.ffprobe_check()
     ffvers = corefuncs.get_ffmpeg_version()
+    rcvers = corefuncs.get_rawcooked_version()
     
     def get_immediate_subdirectories(folder):
         """get immediate subdirectories of input"""
