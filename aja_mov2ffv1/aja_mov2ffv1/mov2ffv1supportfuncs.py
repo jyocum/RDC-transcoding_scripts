@@ -133,19 +133,20 @@ def ffv1_lossless_transcode(input_metadata, transcode_nameDict, audioStreamCount
         ffmpeg_command.extend(('-colorspace', input_metadata['techMetaV']['color space']))
     if audioStreamCounter > 0:
         ffmpeg_command.extend(('-c:a', 'copy'))
-    ffmpeg_command.extend((tempMasterFile, '-f', 'framemd5', '-an', framemd5AbsPath))
+    ffmpeg_command.extend((tempMasterFile if args.embed_framemd5 else outputAbsPath, '-f', 'framemd5', '-an', framemd5AbsPath))
 
     #execute ffmpeg command
     subprocess.run(ffmpeg_command)
-    
+
     #remux to attach framemd5
-    add_attachment = [args.ffmpeg_path, '-loglevel', 'error', '-i', tempMasterFile, '-c', 'copy', '-map', '0', '-attach', framemd5AbsPath, '-metadata:s:t:0', 'mimetype=application/octet-stream', '-metadata:s:t:0', 'filename=' + framemd5File, outputAbsPath]    
-    if os.path.isfile(tempMasterFile):
-        subprocess.call(add_attachment)
-        filesToDelete = [tempMasterFile, framemd5AbsPath]
-        delete_files(filesToDelete)
-    else:
-        print ("There was an issue finding the file", tempMasterFile)
+    if args.embed_framemd5:
+        add_attachment = [args.ffmpeg_path, '-loglevel', 'error', '-i', tempMasterFile, '-c', 'copy', '-map', '0', '-attach', framemd5AbsPath, '-metadata:s:t:0', 'mimetype=application/octet-stream', '-metadata:s:t:0', 'filename=' + framemd5File, outputAbsPath]    
+        if os.path.isfile(tempMasterFile):
+            subprocess.call(add_attachment)
+            filesToDelete = [tempMasterFile, framemd5AbsPath]
+            delete_files(filesToDelete)
+        else:
+            print ("There was an issue finding the file", tempMasterFile)
 
 def delete_files(list):
     '''

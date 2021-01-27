@@ -15,15 +15,15 @@ from aja_mov2ffv1 import mov2ffv1passfail_checks
 
 def aja_mov2ffv1_main():
     #the pm identifier is the name of the folder that the preservation file will be output to
-    pm_identifier = 'pm'
+    pm_identifier = 'p'
     #the ac identifier will be used as the folder name for the access file
     #it will also be appended to the end of the access copy filename
-    ac_identifier = 'ac'
+    ac_identifier = 'a'
     metadata_identifier = 'meta'
     #identifier appended to the end of the MKV preservation file
     #Replace with "None" to keep the name the same as the input
     if not args.keep_filename:
-        pm_filename_identifier = '-pm'
+        pm_filename_identifier = '-p'
     else:
         pm_filename_identifier = None
     inventoryName = 'transcode_inventory.csv'
