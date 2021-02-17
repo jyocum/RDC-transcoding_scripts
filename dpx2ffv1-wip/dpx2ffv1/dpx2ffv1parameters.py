@@ -16,6 +16,7 @@ parser.add_argument('--ffmpeg', action='store', dest='ffmpeg_path', default='ffm
 parser.add_argument('--ffprobe', action='store', dest='ffprobe_path', default='ffprobe', type=str, help='For setting a custom ffprobe path')
 parser.add_argument('--qcli', action='store', dest='qcli_path', default='qcli', type=str, help='For setting a custom qcli path')
 parser.add_argument('--mediaconch', action='store', dest='mediaconch_path', default='mediaconch', type=str, help='For setting a custom mediaconch path')
+parser.add_argument('--mediainfo', action='store', dest='mediainfo_path', default='mediainfo', type=str, help='For setting a custom mediainfo path')
 parser.add_argument('--verbose', required=False, action='store_true', help='view ffmpeg output when transcoding')
 parser.add_argument('--slices', action='store', dest='ffv1_slice_count', default='16', choices=[4,6,9,12,16,24,30], type=int, help='Set the FFV1 slice count used by ffmpeg when losslessly transcoding files. Default is 16.')
 parser.add_argument('--skipac', required=False, action='store_true', dest='skip_ac', help='skip access copy transcoding')

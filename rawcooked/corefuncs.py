@@ -10,7 +10,7 @@ import os
 import hashlib
 import sys
 import subprocess
-from dpx2ffv1.dpx2ffv1parameters import args
+from dpx2ffv1parameters import args
 
 def input_check():
     '''
