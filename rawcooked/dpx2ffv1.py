@@ -66,7 +66,7 @@ for title in title_list:
             tstime = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
             #build and execute rawcooked command
-            rawcooked_command = [args.rawcooked_path, '--all', '--quiet', '--framemd5', '--framemd5-name', framemd5_abspath]
+            rawcooked_command = [args.rawcooked_path, '--all', '--framemd5', '--framemd5-name', framemd5_abspath]
             if args.framerate:
                 rawcooked_command += ['-framerate', args.framerate]
             rawcooked_command += [indirbase, '-o', mkv_abspath]
