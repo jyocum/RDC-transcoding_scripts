@@ -70,8 +70,8 @@ for title in title_list:
             if args.framerate:
                 rawcooked_command += ['-framerate', args.framerate]
             rawcooked_command += [indirbase, '-o', mkv_abspath]
-            print(rawcooked_command)
-            subprocess.call(rawcooked_command)
+            #print(rawcooked_command)
+            rawcooked_results = subprocess.check_output(rawcooked_command).decode("ascii").rstrip()
 
             #log transcode finish time
             tftime = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
@@ -87,31 +87,51 @@ for title in title_list:
 
             data = {}
             data[title] = []
-            metadict = {
+            metadict = { 'system information': {
             'operating system': osinfo,
             'ffmpeg version': ffvers,
             'rawcooked version': rawcvers,
             'transcode start time': tstime,
             'transcode end time': tftime
-            }
+            }}
+
+            attachments = dpx2ffv1supportfuncs.list_mkv_attachments(mkv_abspath)
+            format_metadict = dpx2ffv1supportfuncs.get_mkv_format_metadata(mkv_abspath)
+            video_metadict = dpx2ffv1supportfuncs.get_mkv_video_metadata(mkv_abspath)
+            audio_metadict = dpx2ffv1supportfuncs.get_mkv_audio_metadata(mkv_abspath)
             #note that the size is output in bytes.  This can be converted to MiB by dividing by 1024**2 or GiB by dividing by 1024**3
             dpxsize = dpx2ffv1supportfuncs.get_folder_size(os.path.join(indir, title, subfolder_identifier))
-            #log ffv1 file size
-            #This uses outpathfull so that it will not fail if there is no mkv file
+            #log ffv1 (folder) size
             mkvsize = dpx2ffv1supportfuncs.get_folder_size(outpathfull)
-            attachments = dpx2ffv1supportfuncs.list_mkv_attachments(mkv_abspath)
-            #TO DO: Log other information
-            #framerate =
-            #width =
-            #height =
-            #stream count (video/audio)
-            post_transcode_dict = {
-            'file name': ffv1_name,
+            pm_runtime = format_metadict.get('format')['duration']
+            post_transcode_dict = { 'post-transcode metadata': {
+            'filename': ffv1_name,
             'md5 checksum': mkvhash,
+            'duration' : pm_runtime,
+            'streams' : format_metadict.get('format')['nb_streams'],
             'compressed size': mkvsize,
-            'uncompressed size': dpxsize,
+            'uncompressed size': dpxsize
+            }}
+            video_dict = {'video': {
+            'video streams': [stream.get('codec_name') for stream in (video_metadict['streams'])],
+            'framerate': [stream.get('r_frame_rate') for stream in (video_metadict['streams'])][0],
+            'width': [stream.get('width') for stream in (video_metadict['streams'])][0],
+            'height': [stream.get('height') for stream in (video_metadict['streams'])][0],
+            'sample_aspect_ratio': [stream.get('sample_aspect_ratio') for stream in (video_metadict['streams'])][0],
+            'display_aspect_ratio': [stream.get('display_aspect_ratio') for stream in (video_metadict['streams'])][0],
+            'pixel format': [stream.get('pix_fmt') for stream in (video_metadict['streams'])][0]
+            }}
+            audio_dict = {'audio': {
+            'audio codecs': [stream.get('codec_long_name') for stream in (audio_metadict['streams'])],
+            'audio bitrate': [stream.get('bits_per_raw_sample') for stream in (audio_metadict['streams'])],
+            'audio sample rate': [stream.get('sample_rate') for stream in (audio_metadict['streams'])],
+            'audio channels': [stream.get('channels') for stream in (audio_metadict['streams'])]
+            }}
+            data_dict = {'data': {
             'attachments': attachments
-            }
+            }}
+            output_technical_metadata = {'technical metadata': [video_dict, audio_dict, data_dict]}
+            post_transcode_dict.update(output_technical_metadata)
             metadict.update(post_transcode_dict)
             data[title].append(metadict)
             with open(os.path.join(outpathfull, title + '_pm.json'), 'w', newline='\n') as outfile:
@@ -122,9 +142,10 @@ for title in title_list:
             if args.check_runtime:
                 #It may be a good idea to format the runtime outputs as sets or lists
                 ac_runtime = dpx2ffv1supportfuncs.grab_runtime(title_abspath, 'ac', 'mp4')
-                pm_runtime = dpx2ffv1supportfuncs.grab_runtime(outpathbase, subfolder_identifier, 'mkv')
+                #pm_runtime = dpx2ffv1supportfuncs.grab_runtime(outpathbase, subfolder_identifier, 'mkv')
 
                 with open(os.path.join(indir, os.path.join(outpathfull, 'verification_log.txt')), 'a',  newline='\n') as f:
+                    print(rawcooked_results, file=f)
                     print('\n'"Access Copy Runtime:", file=f)
                     print(ac_runtime, file=f)
                     print('\n'"Preservation Master Runtime:", file=f)

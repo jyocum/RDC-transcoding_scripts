@@ -88,6 +88,27 @@ def list_mkv_attachments(input_file_abspath):
         attachment_list.extend(filename)
     return attachment_list
 
+def get_mkv_video_metadata(input_file_abspath):
+    ffprobe_command = [args.ffprobe_path, '-v', 'error', '-select_streams', 'v',]
+    ffprobe_command += ['-show_entries', 'stream=codec_name,width,height,pix_fmt,sample_aspect_ratio,display_aspect_ratio,r_frame_rate']
+    ffprobe_command += [input_file_abspath, '-of', 'json']
+    video_meta_out = json.loads(subprocess.check_output(ffprobe_command).decode("ascii").rstrip())
+    return video_meta_out
+
+def get_mkv_audio_metadata(input_file_abspath):
+    ffprobe_command = [args.ffprobe_path, '-v', 'error', '-select_streams', 'a',]
+    ffprobe_command += ['-show_entries', 'stream=codec_long_name,bits_per_raw_sample,sample_rate,channels']
+    ffprobe_command += [input_file_abspath, '-of', 'json']
+    audio_meta_out = json.loads(subprocess.check_output(ffprobe_command).decode("ascii").rstrip())
+    return audio_meta_out
+
+def get_mkv_format_metadata(input_file_abspath):
+    ffprobe_command = [args.ffprobe_path, '-v', 'error']
+    ffprobe_command += ['-show_entries', 'format=duration,nb_streams']
+    ffprobe_command += [input_file_abspath, '-of', 'json']
+    format_meta_out = json.loads(subprocess.check_output(ffprobe_command).decode("ascii").rstrip())
+    return format_meta_out
+
 def dpx_md5_compare(dpxfolder):
     '''
     Returns two sets
